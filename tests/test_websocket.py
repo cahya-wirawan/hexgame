@@ -1,0 +1,143 @@
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+
+def test_health_slots_and_overview():
+    client = TestClient(app)
+
+    assert client.get("/health").json() == {"status": "ok"}
+    slots = client.get("/slots").json()
+    assert len(slots) == 5
+    assert slots[0]["state"] == "empty"
+    response = client.get("/overview")
+    assert response.status_code == 200
+    assert "Hex Game Overview" in response.text
+
+
+def test_two_clients_with_same_board_size_are_matched():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=11") as player_1:
+        assert player_1.receive_json()["type"] == "joined"
+        assert player_1.receive_json()["type"] == "waiting_for_opponent"
+
+        with client.websocket_connect("/ws/matchmake?board_size=11") as player_2:
+            joined_2 = player_2.receive_json()
+            assert joined_2["type"] == "joined"
+            assert joined_2["payload"]["player"] == "player_2"
+            assert player_1.receive_json()["type"] == "game_start"
+            assert player_2.receive_json()["type"] == "game_start"
+
+
+def test_clients_with_different_board_sizes_do_not_share_slot():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=11") as player_1:
+        player_1.receive_json()
+        player_1.receive_json()
+
+        with client.websocket_connect("/ws/matchmake?board_size=13") as player_2:
+            joined_2 = player_2.receive_json()
+            waiting_2 = player_2.receive_json()
+
+            assert joined_2["payload"]["player"] == "player_1"
+            assert joined_2["payload"]["slot_id"] == 2
+            assert waiting_2["type"] == "waiting_for_opponent"
+
+
+def test_invalid_board_size_gets_structured_error():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=5") as websocket:
+        message = websocket.receive_json()
+
+    assert message == {"type": "error", "payload": {"message": "Unsupported board size"}}
+
+
+def test_move_spoofing_is_ignored_and_authoritative_moves_are_broadcast():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=7") as player_1:
+        player_1.receive_json()
+        player_1.receive_json()
+        with client.websocket_connect("/ws/matchmake?board_size=7") as player_2:
+            player_2.receive_json()
+            player_1.receive_json()
+            player_2.receive_json()
+
+            player_1.send_json({"type": "move", "payload": {"player": "player_2", "q": 0, "r": 0}})
+            move_for_1 = player_1.receive_json()
+            move_for_2 = player_2.receive_json()
+
+            assert move_for_1["type"] == "move"
+            assert move_for_1["payload"]["player"] == "player_1"
+            assert move_for_2["payload"]["player"] == "player_1"
+
+
+def test_invalid_move_is_rejected():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=7") as player_1:
+        player_1.receive_json()
+        player_1.receive_json()
+        with client.websocket_connect("/ws/matchmake?board_size=7") as player_2:
+            player_2.receive_json()
+            player_1.receive_json()
+            player_2.receive_json()
+
+            player_2.send_json({"type": "move", "payload": {"q": 0, "r": 0}})
+            rejected = player_2.receive_json()
+
+            assert rejected["type"] == "move_rejected"
+            assert rejected["payload"]["reason"] == "Not your turn"
+
+
+def test_game_over_is_emitted_for_player_1_win():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=7") as player_1:
+        player_1.receive_json()
+        player_1.receive_json()
+        with client.websocket_connect("/ws/matchmake?board_size=7") as player_2:
+            player_2.receive_json()
+            player_1.receive_json()
+            player_2.receive_json()
+
+            player_1_moves = [(0, r) for r in range(7)]
+            player_2_moves = [(6, r) for r in range(6)]
+
+            for index, p1_move in enumerate(player_1_moves):
+                player_1.send_json({"type": "move", "payload": {"q": p1_move[0], "r": p1_move[1]}})
+                assert player_1.receive_json()["type"] == "move"
+                assert player_2.receive_json()["type"] == "move"
+
+                if index == len(player_1_moves) - 1:
+                    game_over_1 = player_1.receive_json()
+                    game_over_2 = player_2.receive_json()
+                    assert game_over_1["type"] == "game_over"
+                    assert game_over_1["payload"]["winner"] == "player_1"
+                    assert game_over_2["type"] == "game_over"
+                    break
+
+                p2_move = player_2_moves[index]
+                player_2.send_json({"type": "move", "payload": {"q": p2_move[0], "r": p2_move[1]}})
+                assert player_1.receive_json()["type"] == "move"
+                assert player_2.receive_json()["type"] == "move"
+
+
+def test_disconnect_notifies_opponent_and_resets_slot():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=7") as player_1:
+        player_1.receive_json()
+        player_1.receive_json()
+        with client.websocket_connect("/ws/matchmake?board_size=7") as player_2:
+            player_2.receive_json()
+            player_1.receive_json()
+            player_2.receive_json()
+        disconnected = player_1.receive_json()
+        assert disconnected["type"] == "opponent_disconnected"
+
+    slots = client.get("/slots").json()
+    assert slots[0]["state"] == "empty"

@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.config import MAX_SLOTS, PLAYER_1, PLAYER_2
 from app.main import app
 
 
@@ -8,7 +9,7 @@ def test_health_slots_and_overview():
 
     assert client.get("/health").json() == {"status": "ok"}
     slots = client.get("/slots").json()
-    assert len(slots) == 5
+    assert len(slots) == MAX_SLOTS
     assert slots[0]["state"] == "empty"
     response = client.get("/overview")
     assert response.status_code == 200
@@ -25,9 +26,13 @@ def test_two_clients_with_same_board_size_are_matched():
         with client.websocket_connect("/ws/matchmake?board_size=11") as player_2:
             joined_2 = player_2.receive_json()
             assert joined_2["type"] == "joined"
-            assert joined_2["payload"]["player"] == "player_2"
-            assert player_1.receive_json()["type"] == "game_start"
-            assert player_2.receive_json()["type"] == "game_start"
+            assert joined_2["payload"]["player"] == PLAYER_2
+            start_1 = player_1.receive_json()
+            start_2 = player_2.receive_json()
+            assert start_1["type"] == "game_start"
+            assert start_1["payload"]["players"] == [PLAYER_1, PLAYER_2]
+            assert start_2["type"] == "game_start"
+            assert start_2["payload"]["players"] == [PLAYER_1, PLAYER_2]
 
 
 def test_clients_with_different_board_sizes_do_not_share_slot():
@@ -41,7 +46,7 @@ def test_clients_with_different_board_sizes_do_not_share_slot():
             joined_2 = player_2.receive_json()
             waiting_2 = player_2.receive_json()
 
-            assert joined_2["payload"]["player"] == "player_1"
+            assert joined_2["payload"]["player"] == PLAYER_1
             assert joined_2["payload"]["slot_id"] == 2
             assert waiting_2["type"] == "waiting_for_opponent"
 
@@ -57,7 +62,7 @@ def test_clients_with_different_series_lengths_do_not_share_slot():
             joined_2 = player_2.receive_json()
             waiting_2 = player_2.receive_json()
 
-            assert joined_2["payload"]["player"] == "player_1"
+            assert joined_2["payload"]["player"] == PLAYER_1
             assert joined_2["payload"]["slot_id"] == 2
             assert joined_2["payload"]["series_length"] == 5
             assert waiting_2["type"] == "waiting_for_opponent"
@@ -92,13 +97,13 @@ def test_move_spoofing_is_ignored_and_authoritative_moves_are_broadcast():
             player_1.receive_json()
             player_2.receive_json()
 
-            player_1.send_json({"type": "move", "payload": {"player": "player_2", "q": 0, "r": 0}})
+            player_1.send_json({"type": "move", "payload": {"player": PLAYER_2, "q": 0, "r": 0}})
             move_for_1 = player_1.receive_json()
             move_for_2 = player_2.receive_json()
 
             assert move_for_1["type"] == "move"
-            assert move_for_1["payload"]["player"] == "player_1"
-            assert move_for_2["payload"]["player"] == "player_1"
+            assert move_for_1["payload"]["player"] == PLAYER_1
+            assert move_for_2["payload"]["player"] == PLAYER_1
 
 
 def test_invalid_move_is_rejected():
@@ -142,7 +147,7 @@ def test_game_over_is_emitted_for_player_1_win():
                     game_over_1 = player_1.receive_json()
                     game_over_2 = player_2.receive_json()
                     assert game_over_1["type"] == "game_over"
-                    assert game_over_1["payload"]["winner"] == "player_1"
+                    assert game_over_1["payload"]["winner"] == PLAYER_1
                     assert game_over_2["type"] == "game_over"
                     break
 
@@ -162,7 +167,7 @@ def test_best_of_three_continues_after_first_game_and_then_emits_series_over():
             player_2.receive_json()
             first_start_1 = player_1.receive_json()
             first_start_2 = player_2.receive_json()
-            assert first_start_1["payload"]["first_turn"] == "player_1"
+            assert first_start_1["payload"]["first_turn"] == PLAYER_1
             assert first_start_2["payload"]["wins_required"] == 2
 
             play_player_1_column_win(player_1, player_2)
@@ -176,7 +181,7 @@ def test_best_of_three_continues_after_first_game_and_then_emits_series_over():
             next_start_1 = player_1.receive_json()
             next_start_2 = player_2.receive_json()
             assert next_start_1["type"] == "game_start"
-            assert next_start_1["payload"]["first_turn"] == "player_2"
+            assert next_start_1["payload"]["first_turn"] == PLAYER_2
             assert next_start_2["payload"]["current_game_number"] == 2
 
             player_2.send_json({"type": "move", "payload": {"q": 6, "r": 6}})
@@ -191,7 +196,7 @@ def test_best_of_three_continues_after_first_game_and_then_emits_series_over():
             series_over_1 = player_1.receive_json()
             series_over_2 = player_2.receive_json()
             assert series_over_1["type"] == "series_over"
-            assert series_over_1["payload"]["winner"] == "player_1"
+            assert series_over_1["payload"]["winner"] == PLAYER_1
             assert series_over_2["payload"]["player_1_wins"] == 2
 
 

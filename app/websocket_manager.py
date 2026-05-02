@@ -4,6 +4,7 @@ from collections.abc import Iterable
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from .config import PLAYER_1, PLAYER_2
 from .game import validate_move_payload
 from .models import PlayerConnection, SlotAssignment
 from .protocol import (
@@ -176,12 +177,12 @@ class WebSocketGameManager:
             )
 
     async def _handle_resign(self, assignment: SlotAssignment) -> None:
-        winner = "player_2" if assignment.player_id == "player_1" else "player_1"
+        winner = PLAYER_2 if assignment.player_id == PLAYER_1 else PLAYER_1
         connections = await self.slot_manager.connections_for_slot(assignment.slot_id)
         await self._broadcast_connections(connections, game_over(winner, "resignation"), assignment.slot_id)
         await self.handle_disconnect(assignment.slot_id, assignment.player_id)
 
-    async def handle_disconnect(self, slot_id: int, player_id: str) -> None:
+    async def handle_disconnect(self, slot_id: int, player_id: int) -> None:
         remaining = await self.slot_manager.reset_slot(slot_id, expected_player_id=player_id)
         if remaining is None:
             return
@@ -210,7 +211,7 @@ class WebSocketGameManager:
     async def _game_start_message(self, slot_id: int, board_size: int) -> dict:
         slot = await self.slot_manager.get_slot(slot_id)
         if slot is None or slot.series_state is None or slot.game_state is None:
-            return game_start(slot_id, board_size, "player_1", 1, 1, 0, 0, 1)
+            return game_start(slot_id, board_size, PLAYER_1, 1, 1, 0, 0, 1)
         return game_start(
             slot_id,
             board_size,

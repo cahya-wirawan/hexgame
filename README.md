@@ -143,7 +143,7 @@ Allowed board sizes:
 Allowed series lengths:
 
 ```text
-1, 3, 5, 7
+1, 3, 5, 7, 9, 11, 13, 15
 ```
 
 `series_length` defaults to `1`. The server only matches players who request
@@ -228,7 +228,7 @@ WebSocket connection.
   "payload": {
     "slot_id": 1,
     "player": -1,
-    "color": "red",
+    "color": "blue",
     "board_size": 11,
     "series_length": 3,
     "protocol_version": 1
@@ -257,7 +257,7 @@ WebSocket connection.
     "slot_id": 1,
     "board_size": 11,
     "series_length": 3,
-    "players": ["player_1", "player_2"],
+    "players": [-1, 1],
     "first_turn": -1,
     "current_game_number": 1,
     "player_1_wins": 0,
@@ -345,33 +345,33 @@ Other server messages:
 - `error`
 - `opponent_disconnected`
 
-### Player ID Compatibility
+### Player IDs
 
-The protocol originally used string IDs (`"player_1"` and `"player_2"`).
-The current model-client branch uses numeric IDs internally:
+The protocol uses numeric IDs everywhere a player appears:
 
 ```text
--1 = player_1
- 1 = player_2
+-1 = player_1 = blue = top-to-bottom
+ 1 = player_2 = red  = left-to-right
 ```
 
-The model clients accept both string and numeric IDs when updating their local
-board. If you write a new client, do not hard-code one representation without
-checking `app/config.py`.
+New clients should treat `-1` and `1` as the canonical protocol values. The
+server still owns identity: clients do not send their player id in `move`
+messages, and any extra `player` field in a move payload is ignored.
 
 ## Gameplay Rules
 
 - The current `app/config.py` maps `PLAYER_1 = -1` and `PLAYER_2 = 1`.
-- `player_1` moves first.
+- `player_1` (`-1`, blue) moves first.
 - A game is one Hex board.
-- A series is best-of `1`, `3`, `5`, or `7` games between the same players.
+- A series is best-of `1`, `3`, `5`, `7`, `9`, `11`, `13`, or `15` games
+  between the same players.
 - The series ends as soon as a player reaches `ceil(series_length / 2)` wins.
-- First turn alternates by game number: odd games start with `player_1`, even
-  games start with `player_2`.
+- First turn alternates by game number: odd games start with `player_1` (`-1`),
+  even games start with `player_2` (`1`).
 - Coordinates are `(q, r)`.
 - Board access is `board[r][q]`.
-- `player_1` wins by connecting top to bottom.
-- `player_2` wins by connecting left to right.
+- `player_1` (`-1`, blue) wins by connecting top to bottom.
+- `player_2` (`1`, red) wins by connecting left to right.
 - Neighbors use the axial-like offsets:
 
 ```python

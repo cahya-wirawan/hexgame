@@ -13,16 +13,16 @@ type SlotSnapshot = {
   board_size: number | null;
   series_length: number | null;
   player_count: number;
-  players: string[];
-  current_turn: string | null;
-  winner: string | null;
+  players: number[];
+  current_turn: number | null;
+  winner: number | null;
   move_count: number;
-  board: (string | null)[][] | null;
+  board: (number | null)[][] | null;
   wins_required: number | null;
   current_game_number: number | null;
   player_1_wins: number;
   player_2_wins: number;
-  series_winner: string | null;
+  series_winner: number | null;
 };
 
 const stateTone: Record<SlotState, "empty" | "waiting" | "full"> = {
@@ -43,9 +43,9 @@ function BoardPreview({ board }: { board: SlotSnapshot["board"] }) {
           <span
             key={`${q}-${r}`}
             className={
-              cell === "player_1"
+              cell === -1
                 ? "aspect-square rounded-sm bg-blue-600"
-                : cell === "player_2"
+                : cell === 1
                   ? "aspect-square rounded-sm bg-red-600"
                   : "aspect-square rounded-sm bg-slate-200"
             }

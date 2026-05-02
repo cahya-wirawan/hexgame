@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .config import PROTOCOL_VERSION
+from .config import PLAYER_1, PLAYER_2, PROTOCOL_VERSION
 
 CLIENT_MESSAGE_TYPES = {"hello", "move", "chat", "resign", "ping"}
 
@@ -33,7 +33,7 @@ def move_rejected(reason: str) -> dict[str, Any]:
     return message("move_rejected", {"reason": reason})
 
 
-def joined(slot_id: int, player_id: str, color: str, board_size: int, series_length: int) -> dict[str, Any]:
+def joined(slot_id: int, player_id: int, color: str, board_size: int, series_length: int) -> dict[str, Any]:
     return message(
         "joined",
         {
@@ -54,7 +54,7 @@ def waiting_for_opponent(slot_id: int, board_size: int) -> dict[str, Any]:
 def game_start(
     slot_id: int,
     board_size: int,
-    first_turn: str,
+    first_turn: int,
     current_game_number: int,
     series_length: int,
     player_1_wins: int,
@@ -67,7 +67,7 @@ def game_start(
             "slot_id": slot_id,
             "board_size": board_size,
             "series_length": series_length,
-            "players": ["player_1", "player_2"],
+            "players": [PLAYER_1, PLAYER_2],
             "first_turn": first_turn,
             "current_game_number": current_game_number,
             "player_1_wins": player_1_wins,
@@ -77,11 +77,11 @@ def game_start(
     )
 
 
-def move(player_id: str, q: int, r: int, next_turn: str | None) -> dict[str, Any]:
+def move(player_id: int, q: int, r: int, next_turn: int | None) -> dict[str, Any]:
     return message("move", {"player": player_id, "q": q, "r": r, "next_turn": next_turn})
 
 
-def game_over(winner: str, reason: str = "connected_sides") -> dict[str, Any]:
+def game_over(winner: int, reason: str = "connected_sides") -> dict[str, Any]:
     return message("game_over", {"winner": winner, "reason": reason})
 
 
@@ -105,7 +105,7 @@ def series_update(
 
 
 def series_over(
-    winner: str,
+    winner: int,
     player_1_wins: int,
     player_2_wins: int,
     wins_required: int,

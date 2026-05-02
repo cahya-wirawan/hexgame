@@ -10,21 +10,14 @@ from typing import Any
 import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
-SERVER_TO_MODEL = {
-    "player_1": 1,
-    "player_2": -1,
-    1: 1,
-    -1: -1,
-}
-
 MODEL_TO_COLOR = {
-    "-1": "red",
-    "1": "blue",
+    -1: "blue",
+    1: "red",
 }
 
 MODEL_TO_PLAYER = {
-    "-1": "player_1",
-    "1": "player_2",
+    -1: "player_1",
+    1: "player_2",
 }
 
 def empty_cells(board: list[list[int | None]]) -> list[tuple[int, int]]:
@@ -117,8 +110,8 @@ class HexBoardViewer:
         board: list[list[int | None]],
         *,
         status: str,
-        player_id: str | int | None,
-        current_turn: str | int | None,
+        player_id: int | None,
+        current_turn: int | None,
         score: tuple[int, int],
         game_number: int | None,
         series_length: int,
@@ -151,17 +144,17 @@ class HexBoardViewer:
                 corners = self._hex_corners(center)
                 pygame.draw.polygon(self.screen, self.COLORS["cell"], corners)
                 pygame.draw.polygon(self.screen, self.COLORS["grid"], corners, 2)
-                value = board[col][row]
+                value = board[row][col]
                 if value == 1:
-                    pygame.draw.circle(self.screen, self.COLORS["blue"], (int(x), int(y)), int(self.hex_radius * 0.68))
-                elif value == -1:
                     pygame.draw.circle(self.screen, self.COLORS["red"], (int(x), int(y)), int(self.hex_radius * 0.68))
+                elif value == -1:
+                    pygame.draw.circle(self.screen, self.COLORS["blue"], (int(x), int(y)), int(self.hex_radius * 0.68))
 
     def _draw_status(
         self,
         status: str,
-        player_id: str | int | None,
-        current_turn: str | int | None,
+        player_id: int | None,
+        current_turn: int | None,
         score: tuple[int, int],
         game_number: int | None,
         series_length: int,
@@ -169,7 +162,7 @@ class HexBoardViewer:
         lines = [
             "Hex Client",
             status,
-            f"You: {MODEL_TO_COLOR.get(str(player_id), 'not joined')} ({MODEL_TO_PLAYER.get(str(player_id), 'unknown')})",
+            f"You: {MODEL_TO_COLOR.get(player_id, 'not joined')} ({MODEL_TO_PLAYER.get(player_id, 'unknown')})",
             f"Turn: {current_turn if current_turn is not None else 'none'}",
             f"Score: {score[0]} : {score[1]}",
             f"Game: {game_number if game_number is not None else '-'} / {series_length}",
@@ -187,8 +180,8 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
     agent = getattr(model, "agent")
 
     uri = f"{server.rstrip('/')}/ws/matchmake?board_size={board_size}&series_length={series_length}"
-    player_id: str | int | None = None
-    current_turn: str | int | None = None
+    player_id: int | None = None
+    current_turn: int | None = None
     board: list[list[int | None]] = [[0 for _ in range(board_size)] for _ in range(board_size)]
     pending_move = False
     score = (0, 0)
@@ -230,7 +223,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                 elif message_type == "move":
                     q = payload["q"]
                     r = payload["r"]
-                    board[r][q] = SERVER_TO_MODEL[payload["player"]]
+                    board[r][q] = payload["player"]
                     current_turn = payload.get("next_turn")
                     pending_move = False
                     status = f"Move: row={r}, col={q}"

@@ -10,7 +10,7 @@ import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
 
-def empty_cells(board: list[list[str | None]]) -> list[tuple[int, int]]:
+def empty_cells(board: list[list[int | None]]) -> list[tuple[int, int]]:
     return [
         (q, r)
         for r, row in enumerate(board)
@@ -22,9 +22,9 @@ def empty_cells(board: list[list[str | None]]) -> list[tuple[int, int]]:
 async def run(server: str, board_size: int, series_length: int, seed: int | None, move_delay: float) -> None:
     rng = random.Random(seed)
     uri = f"{server.rstrip('/')}/ws/matchmake?board_size={board_size}&series_length={series_length}"
-    player_id: str | None = None
-    current_turn: str | None = None
-    board: list[list[str | None]] = [[None for _ in range(board_size)] for _ in range(board_size)]
+    player_id: int | None = None
+    current_turn: int | None = None
+    board: list[list[int | None]] = [[None for _ in range(board_size)] for _ in range(board_size)]
     pending_move = False
 
     try:

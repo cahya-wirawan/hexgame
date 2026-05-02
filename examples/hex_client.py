@@ -10,31 +10,20 @@ from typing import Any
 import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
-# from .model_random import agent
-
-SERVER_TO_MODEL = {
-    "player_1": 1,
-    "player_2": -1,
-    1: 1,
-    -1: -1,
-}
-
 MODEL_TO_COLOR = {
-    "-1": "red",
-    "1": "blue",
+    -1: "blue",
+    1: "red",
 }
 
 MODEL_TO_PLAYER = {
-    "-1": "player_1",
-    "1": "player_2",
+    -1: "player_1",
+    1: "player_2",
 }
 
 CELL_SYMBOLS = {
     0: ".",
-    1: "B",
-    -1: "R",
-    "player_1": "R",
-    "player_2": "B",
+    1: "R",
+    -1: "B",
 }
 
 module_name = "model_random"
@@ -57,10 +46,10 @@ def print_board(board: list[list[int | None]], title: str = "Board") -> None:
     labels = " ".join(f"{q:>2}" for q in range(size))
     print(f"\n{title}")
     print(f"     {labels}")
-    board = list(map(list, zip(*board)))
+    # board = list(map(list, zip(*board)))
     for r, row in enumerate(board):
         indent = " " * r
-        cells = " ".join(f"{CELL_SYMBOLS.get(cell, '?'):>2}" for cell in row)
+        cells = " ".join(f"{CELL_SYMBOLS.get(cell if cell is not None else 0, '?'):>2}" for cell in row)
         print(f"{indent}{r:>2}   {cells}")
     print()
 
@@ -70,8 +59,8 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
     agent = getattr(model, "agent")
 
     uri = f"{server.rstrip('/')}/ws/matchmake?board_size={board_size}&series_length={series_length}"
-    player_id: str | int | None = None
-    current_turn: str | int | None = None
+    player_id: int | None = None
+    current_turn: int | None = None
     board: list[list[int | None]] = [[0 for _ in range(board_size)] for _ in range(board_size)]
     pending_move = False
 
@@ -92,7 +81,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                 elif message_type == "move":
                     q = payload["q"]
                     r = payload["r"]
-                    board[r][q] = SERVER_TO_MODEL[payload["player"]]
+                    board[r][q] = payload["player"]
                     current_turn = payload.get("next_turn")
                     pending_move = False
                 elif message_type == "move_rejected":
@@ -102,8 +91,8 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                     pending_move = False
                 elif message_type == "series_over":
                     winner_id = payload.get("winner")
-                    winner = f"{MODEL_TO_PLAYER.get(str(winner_id), winner_id)}"
-                    winner += f" ({MODEL_TO_COLOR.get(str(winner_id), 'unknown color')})"
+                    winner = f"{MODEL_TO_PLAYER.get(winner_id, winner_id)}"
+                    winner += f" ({MODEL_TO_COLOR.get(winner_id, 'unknown color')})"
                     print_board(
                         board,
                         (

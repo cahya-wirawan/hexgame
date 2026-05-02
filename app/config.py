@@ -6,6 +6,6 @@ PROTOCOL_VERSION = 1
 PLAYER_1 = -1
 PLAYER_2 = 1
 PLAYER_COLORS = {
-    PLAYER_1: "red",
-    PLAYER_2: "blue",
+    PLAYER_1: "blue",
+    PLAYER_2: "red",
 }

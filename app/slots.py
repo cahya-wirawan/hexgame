@@ -53,7 +53,7 @@ class SlotManager:
         async with self.lock:
             return [slot.snapshot() for slot in self.slots.values()]
 
-    async def reset_slot(self, slot_id: int, expected_player_id: str | None = None) -> PlayerConnection | None:
+    async def reset_slot(self, slot_id: int, expected_player_id: int | None = None) -> PlayerConnection | None:
         async with self.lock:
             slot = self.slots.get(slot_id)
             if slot is None or slot.state == "empty":
@@ -71,14 +71,14 @@ class SlotManager:
             slot.reset()
             return remaining
 
-    async def get_opponent(self, slot_id: int, player_id: str) -> PlayerConnection | None:
+    async def get_opponent(self, slot_id: int, player_id: int) -> PlayerConnection | None:
         async with self.lock:
             slot = self.slots.get(slot_id)
             if slot is None:
                 return None
             return slot.opponent_connection(player_id)
 
-    async def apply_authoritative_move(self, slot_id: int, player_id: str, q: int, r: int):
+    async def apply_authoritative_move(self, slot_id: int, player_id: int, q: int, r: int):
         from .game import apply_move
 
         async with self.lock:
@@ -89,7 +89,7 @@ class SlotManager:
             connections = [slot.player_1, slot.player_2]
             return (result, connections), None
 
-    async def record_game_result(self, slot_id: int, winner: str):
+    async def record_game_result(self, slot_id: int, winner: int):
         async with self.lock:
             slot = self.slots.get(slot_id)
             if slot is None or slot.series_state is None or slot.board_size is None:
@@ -159,7 +159,7 @@ class SlotManager:
                 return slot
         return None
 
-    def _assignment(self, slot: GameSlot, player_id: str) -> SlotAssignment:
+    def _assignment(self, slot: GameSlot, player_id: int) -> SlotAssignment:
         connection = slot.get_connection(player_id)
         if connection is None or slot.board_size is None or slot.series_length is None:
             raise RuntimeError("slot assignment requested before player was assigned")

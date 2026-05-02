@@ -48,6 +48,25 @@ class MatchReplayLog:
             handle.write(json.dumps(record, separators=(",", ":")) + "\n")
 
 
+def board_for_model(board: list[list[int | None]], model: Any) -> list[list[int]]:
+    """Return a defensive model-facing board with the model's expected player encoding."""
+    if _expects_legacy_hex_engine_encoding(model):
+        return [[_invert_player_cell(cell) for cell in row] for row in board]
+    return [[0 if cell is None else cell for cell in row] for row in board]
+
+
+def _expects_legacy_hex_engine_encoding(model: Any) -> bool:
+    return getattr(model, "RED", None) == 1 and getattr(model, "BLUE", None) == -1
+
+
+def _invert_player_cell(cell: int | None) -> int:
+    if cell == -1:
+        return 1
+    if cell == 1:
+        return -1
+    return 0
+
+
 def normalize_model_move(move: Any, legal_moves: Iterable[tuple[int, int]]) -> tuple[int, int]:
     """Return a legal (row, col) move or raise a clear client-side error."""
     legal_set = set(legal_moves)

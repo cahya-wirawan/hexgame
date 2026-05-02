@@ -4,6 +4,7 @@ from examples.client_safety import (
     InvalidModelMove,
     MatchReplayLog,
     apply_server_move,
+    board_for_model,
     model_move_to_payload,
     normalize_model_move,
 )
@@ -17,8 +18,35 @@ class IndexableInt:
         return self.value
 
 
+class LegacyHexEngineModel:
+    RED = 1
+    BLUE = -1
+
+
+class ServerNativeModel:
+    RED = -1
+    BLUE = 1
+
+
 def test_normalize_model_move_accepts_legal_row_col_pair():
     assert normalize_model_move([1, 2], [(0, 0), (1, 2)]) == (1, 2)
+
+
+def test_board_for_model_converts_legacy_hex_engine_encoding_without_mutating_source():
+    board = [[-1, 0], [1, None]]
+
+    converted = board_for_model(board, LegacyHexEngineModel)
+
+    assert converted == [[1, 0], [-1, 0]]
+    assert board == [[-1, 0], [1, None]]
+
+
+def test_board_for_model_keeps_server_native_encoding():
+    board = [[-1, 0], [1, None]]
+
+    converted = board_for_model(board, ServerNativeModel)
+
+    assert converted == [[-1, 0], [1, 0]]
 
 
 def test_normalize_model_move_accepts_integer_like_coordinates():

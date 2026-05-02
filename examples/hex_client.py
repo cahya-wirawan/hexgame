@@ -11,9 +11,9 @@ import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
 try:
-    from examples.client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, model_move_to_payload
+    from examples.client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, board_for_model, model_move_to_payload
 except ModuleNotFoundError:
-    from client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, model_move_to_payload
+    from client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, board_for_model, model_move_to_payload
 
 MODEL_TO_COLOR = {
     -1: "red",
@@ -155,7 +155,8 @@ async def run(
                         return
                     await asyncio.sleep(move_delay)
                     try:
-                        raw_move = agent(board, cells)
+                        model_board = board_for_model(board, model)
+                        raw_move = agent(model_board, cells)
                         move_payload = model_move_to_payload(raw_move, cells)
                     except InvalidModelMove as exc:
                         replay.record("model_move_error", error=str(exc), legal_moves=cells, board=board)
@@ -169,6 +170,7 @@ async def run(
                         payload=move_payload,
                         legal_move_count=len(cells),
                         board=board,
+                        model_board=model_board,
                     )
                     pending_move = True
                     replay.record("client_send", message_type="move", payload=move_payload)

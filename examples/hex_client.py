@@ -12,6 +12,21 @@ from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
 # from .model_random import agent
 
+SERVER_TO_MODEL = {
+    "player_1": 1,
+    "player_2": -1,
+    1: 1,
+    -1: -1,
+}
+
+CELL_SYMBOLS = {
+    0: ".",
+    1: "R",
+    -1: "B",
+    "player_1": "R",
+    "player_2": "B",
+}
+
 module_name = "model_random"
 function_name = "agent"
 
@@ -27,13 +42,25 @@ def empty_cells(board: list[list[int | None]]) -> list[tuple[int, int]]:
     ]
 
 
+def print_board(board: list[list[int | None]], title: str = "Board") -> None:
+    size = len(board)
+    labels = " ".join(f"{q:>2}" for q in range(size))
+    print(f"\n{title}")
+    print(f"     {labels}")
+    for r, row in enumerate(board):
+        indent = " " * r
+        cells = " ".join(f"{CELL_SYMBOLS.get(cell, '?'):>2}" for cell in row)
+        print(f"{indent}{r:>2}   {cells}")
+    print()
+
+
 async def run(model_name: str, server: str, board_size: int, series_length: int, seed: int | None, move_delay: float) -> None:
     model = importlib.import_module(model_name)
     agent = getattr(model, "agent")
 
     uri = f"{server.rstrip('/')}/ws/matchmake?board_size={board_size}&series_length={series_length}"
-    player_id: int | None = None
-    current_turn: int | None = None
+    player_id: str | int | None = None
+    current_turn: str | int | None = None
     board: list[list[int | None]] = [[0 for _ in range(board_size)] for _ in range(board_size)]
     pending_move = False
 
@@ -54,7 +81,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                 elif message_type == "move":
                     q = payload["q"]
                     r = payload["r"]
-                    board[r][q] = payload["player"]
+                    board[r][q] = SERVER_TO_MODEL[payload["player"]]
                     current_turn = payload.get("next_turn")
                     pending_move = False
                 elif message_type == "move_rejected":
@@ -62,7 +89,17 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                 elif message_type == "game_over":
                     current_turn = None
                     pending_move = False
-                elif message_type in {"series_over", "opponent_disconnected", "error"}:
+                elif message_type == "series_over":
+                    print_board(
+                        board,
+                        (
+                            "Final board "
+                            f"(winner={payload.get('winner')}, "
+                            f"score={payload.get('player_1_wins')}-{payload.get('player_2_wins')})"
+                        ),
+                    )
+                    return
+                elif message_type in {"opponent_disconnected", "error"}:
                     return
 
                 if player_id is not None and current_turn == player_id and not pending_move:

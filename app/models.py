@@ -10,9 +10,12 @@ from .config import PLAYER_1, PLAYER_2
 
 @dataclass
 class PlayerConnection:
-    websocket: WebSocket
+    websocket: WebSocket | None
     player_id: int
     color: str
+    reconnect_token: str
+    connected: bool = True
+    disconnected_at: float | None = None
 
 
 @dataclass
@@ -75,6 +78,12 @@ class GameSlot:
     def player_count(self) -> int:
         return int(self.player_1 is not None) + int(self.player_2 is not None)
 
+    def connected_player_count(self) -> int:
+        return sum(
+            int(connection is not None and connection.connected)
+            for connection in (self.player_1, self.player_2)
+        )
+
     def get_connection(self, player_id: int) -> PlayerConnection | None:
         if player_id == PLAYER_1:
             return self.player_1
@@ -104,6 +113,16 @@ class GameSlot:
             for connection in (self.player_1, self.player_2)
             if connection is not None
         ]
+        connected_players = [
+            connection.player_id
+            for connection in (self.player_1, self.player_2)
+            if connection is not None and connection.connected
+        ]
+        disconnected_players = [
+            connection.player_id
+            for connection in (self.player_1, self.player_2)
+            if connection is not None and not connection.connected
+        ]
         game_state = self.game_state
         series_state = self.series_state
         snapshot: dict[str, Any] = {
@@ -112,7 +131,10 @@ class GameSlot:
             "board_size": self.board_size,
             "series_length": self.series_length,
             "player_count": self.player_count(),
+            "connected_player_count": self.connected_player_count(),
             "players": players,
+            "connected_players": connected_players,
+            "disconnected_players": disconnected_players,
             "current_turn": game_state.current_turn if game_state else None,
             "winner": game_state.winner if game_state else None,
             "move_count": game_state.move_count if game_state else 0,

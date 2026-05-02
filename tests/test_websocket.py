@@ -24,6 +24,7 @@ def test_two_clients_with_same_board_size_are_matched():
         assert joined_1["type"] == "joined"
         assert joined_1["payload"]["player"] == PLAYER_1
         assert joined_1["payload"]["color"] == "red"
+        assert isinstance(joined_1["payload"]["reconnect_token"], str)
         assert player_1.receive_json()["type"] == "waiting_for_opponent"
 
         with client.websocket_connect("/ws/matchmake?board_size=11") as player_2:
@@ -31,6 +32,7 @@ def test_two_clients_with_same_board_size_are_matched():
             assert joined_2["type"] == "joined"
             assert joined_2["payload"]["player"] == PLAYER_2
             assert joined_2["payload"]["color"] == "blue"
+            assert isinstance(joined_2["payload"]["reconnect_token"], str)
             start_1 = player_1.receive_json()
             start_2 = player_2.receive_json()
             assert start_1["type"] == "game_start"
@@ -224,7 +226,63 @@ def play_player_1_row_win(player_1, player_2, player_2_already_moved=False):
         assert player_2.receive_json()["type"] == "move"
 
 
-def test_disconnect_notifies_opponent_and_resets_slot():
+def test_disconnect_notifies_opponent_and_holds_slot_for_reconnect():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=7") as player_1:
+        joined_1 = player_1.receive_json()
+        player_1.receive_json()
+        with client.websocket_connect("/ws/matchmake?board_size=7") as player_2:
+            player_2.receive_json()
+            player_1.receive_json()
+            player_2.receive_json()
+        disconnected = player_1.receive_json()
+        assert disconnected["type"] == "opponent_disconnected"
+        assert disconnected["payload"]["reason"] == "waiting_for_reconnect"
+        assert disconnected["payload"]["reconnect_timeout_seconds"] > 0
+        player_1.send_json({"type": "move", "payload": {"q": 0, "r": 0}})
+        rejected = player_1.receive_json()
+        assert rejected["type"] == "move_rejected"
+        assert rejected["payload"]["reason"] == "Game paused for reconnect"
+
+        slots = client.get("/slots").json()
+        assert slots[0]["state"] == "full"
+        assert slots[0]["connected_players"] == [PLAYER_1]
+        assert slots[0]["disconnected_players"] == [PLAYER_2]
+        assert "reconnect_token" not in slots[0]
+        assert "reconnect_token" in joined_1["payload"]
+
+
+def test_disconnected_client_can_reconnect_and_resume_game():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=7") as player_1:
+        player_1.receive_json()
+        player_1.receive_json()
+        with client.websocket_connect("/ws/matchmake?board_size=7") as player_2:
+            joined_2 = player_2.receive_json()
+            player_1.receive_json()
+            player_2.receive_json()
+            token = joined_2["payload"]["reconnect_token"]
+
+        assert player_1.receive_json()["type"] == "opponent_disconnected"
+
+        with client.websocket_connect(f"/ws/reconnect?slot_id=1&token={token}") as reconnected_player_2:
+            reconnected = reconnected_player_2.receive_json()
+            assert reconnected["type"] == "reconnected"
+            assert reconnected["payload"]["player"] == PLAYER_2
+            assert reconnected["payload"]["slot"]["connected_players"] == [PLAYER_1, PLAYER_2]
+
+            opponent_notice = player_1.receive_json()
+            assert opponent_notice["type"] == "opponent_reconnected"
+            assert opponent_notice["payload"]["player"] == PLAYER_2
+
+            player_1.send_json({"type": "move", "payload": {"q": 0, "r": 0}})
+            assert player_1.receive_json()["type"] == "move"
+            assert reconnected_player_2.receive_json()["type"] == "move"
+
+
+def test_reconnect_with_invalid_token_is_rejected():
     client = TestClient(app)
 
     with client.websocket_connect("/ws/matchmake?board_size=7") as player_1:
@@ -234,8 +292,9 @@ def test_disconnect_notifies_opponent_and_resets_slot():
             player_2.receive_json()
             player_1.receive_json()
             player_2.receive_json()
-        disconnected = player_1.receive_json()
-        assert disconnected["type"] == "opponent_disconnected"
 
-    slots = client.get("/slots").json()
-    assert slots[0]["state"] == "empty"
+        assert player_1.receive_json()["type"] == "opponent_disconnected"
+        with client.websocket_connect("/ws/reconnect?slot_id=1&token=wrong") as websocket:
+            rejected = websocket.receive_json()
+            assert rejected["type"] == "error"
+            assert rejected["payload"]["message"] == "Invalid reconnect token"

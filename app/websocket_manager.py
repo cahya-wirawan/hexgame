@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterable
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from .config import PLAYER_1, PLAYER_2
+from .config import PLAYER_1, PLAYER_2, RECONNECT_TIMEOUT_SECONDS
 from .game import validate_move_payload
 from .models import PlayerConnection, SlotAssignment
 from .protocol import (
@@ -16,8 +17,10 @@ from .protocol import (
     move,
     move_rejected,
     opponent_disconnected,
+    opponent_reconnected,
     parse_client_message,
     pong,
+    reconnected,
     series_over,
     series_update,
     waiting_for_opponent,
@@ -29,18 +32,28 @@ class WebSocketGameManager:
     def __init__(self, slot_manager: SlotManager):
         self.slot_manager = slot_manager
 
-    async def start(self, websocket: WebSocket, assignment: SlotAssignment) -> None:
-        await websocket.send_json(
-            joined(
-                assignment.slot_id,
-                assignment.player_id,
-                assignment.color,
-                assignment.board_size,
-                assignment.series_length,
+    async def start(self, websocket: WebSocket, assignment: SlotAssignment, is_reconnect: bool = False) -> None:
+        if is_reconnect:
+            await self._send_reconnected(websocket, assignment)
+        else:
+            await websocket.send_json(
+                joined(
+                    assignment.slot_id,
+                    assignment.player_id,
+                    assignment.color,
+                    assignment.board_size,
+                    assignment.series_length,
+                    self._reconnect_token(assignment),
+                )
             )
-        )
 
-        if assignment.opponent_connected:
+        if is_reconnect:
+            opponent = await self.slot_manager.get_opponent(assignment.slot_id, assignment.player_id)
+            if opponent is not None and opponent.connected:
+                await self._safe_send(opponent, opponent_reconnected(assignment.player_id), assignment.slot_id)
+            elif not assignment.opponent_connected:
+                await websocket.send_json(waiting_for_opponent(assignment.slot_id, assignment.board_size))
+        elif assignment.opponent_connected:
             start_message = await self._game_start_message(assignment.slot_id, assignment.board_size)
             await self._broadcast_connections(
                 [assignment.player_1, assignment.player_2],
@@ -54,6 +67,19 @@ class WebSocketGameManager:
             await self._receive_loop(websocket, assignment)
         except WebSocketDisconnect:
             await self.handle_disconnect(assignment.slot_id, assignment.player_id)
+
+    async def _send_reconnected(self, websocket: WebSocket, assignment: SlotAssignment) -> None:
+        snapshot = await self.slot_manager.snapshot_for_slot(assignment.slot_id)
+        await websocket.send_json(
+            reconnected(
+                assignment.slot_id,
+                assignment.player_id,
+                assignment.color,
+                assignment.board_size,
+                assignment.series_length,
+                snapshot or {},
+            )
+        )
 
     async def _receive_loop(self, websocket: WebSocket, assignment: SlotAssignment) -> None:
         while True:
@@ -183,11 +209,28 @@ class WebSocketGameManager:
         await self.handle_disconnect(assignment.slot_id, assignment.player_id)
 
     async def handle_disconnect(self, slot_id: int, player_id: int) -> None:
-        remaining = await self.slot_manager.reset_slot(slot_id, expected_player_id=player_id)
-        if remaining is None:
+        remaining, reconnect_token = await self.slot_manager.mark_disconnected(slot_id, player_id)
+        if reconnect_token is None:
+            return
+        if remaining is not None and remaining.connected:
+            await self._safe_send(
+                remaining,
+                opponent_disconnected(RECONNECT_TIMEOUT_SECONDS),
+                slot_id,
+            )
+        asyncio.create_task(self._reset_after_reconnect_timeout(slot_id, player_id, reconnect_token))
+
+    async def _reset_after_reconnect_timeout(self, slot_id: int, player_id: int, reconnect_token: str) -> None:
+        await asyncio.sleep(RECONNECT_TIMEOUT_SECONDS)
+        remaining = await self.slot_manager.reset_if_still_disconnected(slot_id, player_id, reconnect_token)
+        if remaining is None or not remaining.connected:
+            return
+        if remaining.websocket is None:
             return
         try:
-            await remaining.websocket.send_json(opponent_disconnected())
+            await remaining.websocket.send_json(
+                opponent_disconnected(RECONNECT_TIMEOUT_SECONDS, reason="reconnect_timeout")
+            )
             await remaining.websocket.close()
         except RuntimeError:
             pass
@@ -199,14 +242,22 @@ class WebSocketGameManager:
         slot_id: int,
     ) -> None:
         for connection in connections:
-            if connection is not None:
+            if connection is not None and connection.connected and connection.websocket is not None:
                 await self._safe_send(connection, outbound, slot_id)
 
     async def _safe_send(self, connection: PlayerConnection, outbound: dict, slot_id: int) -> None:
+        if not connection.connected or connection.websocket is None:
+            return
         try:
             await connection.websocket.send_json(outbound)
         except RuntimeError:
             await self.handle_disconnect(slot_id, connection.player_id)
+
+    def _reconnect_token(self, assignment: SlotAssignment) -> str:
+        connection = assignment.player_1 if assignment.player_id == PLAYER_1 else assignment.player_2
+        if connection is None:
+            raise RuntimeError("slot assignment missing player connection")
+        return connection.reconnect_token
 
     async def _game_start_message(self, slot_id: int, board_size: int) -> dict:
         slot = await self.slot_manager.get_slot(slot_id)

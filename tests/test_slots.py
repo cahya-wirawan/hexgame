@@ -87,15 +87,79 @@ def test_full_slot_is_not_joinable_when_no_empty_slot_exists():
     run(scenario())
 
 
-def test_slot_resets_after_disconnect():
+def test_slot_marks_player_disconnected_without_exposing_token():
+    async def scenario():
+        manager = SlotManager(max_slots=1)
+
+        first = await manager.join_slot(object(), 11)
+        second = await manager.join_slot(object(), 11)
+        remaining, token = await manager.mark_disconnected(1, PLAYER_2)
+        snapshot = await manager.snapshot()
+
+        assert first is not None
+        assert second is not None
+        assert remaining is not None
+        assert remaining.player_id == PLAYER_1
+        assert token
+        assert snapshot[0]["state"] == "full"
+        assert snapshot[0]["players"] == [PLAYER_1, PLAYER_2]
+        assert snapshot[0]["connected_players"] == [PLAYER_1]
+        assert snapshot[0]["disconnected_players"] == [PLAYER_2]
+        assert "reconnect_token" not in snapshot[0]
+
+    run(scenario())
+
+
+def test_disconnected_player_can_reconnect_with_token():
     async def scenario():
         manager = SlotManager(max_slots=1)
 
         await manager.join_slot(object(), 11)
-        remaining = await manager.reset_slot(1, expected_player_id=PLAYER_1)
+        await manager.join_slot(object(), 11)
+        _, token = await manager.mark_disconnected(1, PLAYER_2)
+
+        assignment, failure = await manager.reconnect_slot(object(), 1, token)
         snapshot = await manager.snapshot()
 
-        assert remaining is None
+        assert failure is None
+        assert assignment is not None
+        assert assignment.player_id == PLAYER_2
+        assert assignment.opponent_connected is True
+        assert snapshot[0]["connected_players"] == [PLAYER_1, PLAYER_2]
+        assert snapshot[0]["disconnected_players"] == []
+
+    run(scenario())
+
+
+def test_invalid_reconnect_token_is_rejected():
+    async def scenario():
+        manager = SlotManager(max_slots=1)
+
+        await manager.join_slot(object(), 11)
+        await manager.join_slot(object(), 11)
+        await manager.mark_disconnected(1, PLAYER_2)
+
+        assignment, failure = await manager.reconnect_slot(object(), 1, "wrong")
+
+        assert assignment is None
+        assert failure == "Invalid reconnect token"
+
+    run(scenario())
+
+
+def test_slot_resets_when_reconnect_timeout_expires():
+    async def scenario():
+        manager = SlotManager(max_slots=1)
+
+        await manager.join_slot(object(), 11)
+        await manager.join_slot(object(), 11)
+        _, token = await manager.mark_disconnected(1, PLAYER_2)
+
+        remaining = await manager.reset_if_still_disconnected(1, PLAYER_2, token)
+        snapshot = await manager.snapshot()
+
+        assert remaining is not None
+        assert remaining.player_id == PLAYER_1
         assert snapshot[0]["state"] == "empty"
         assert snapshot[0]["board_size"] is None
 

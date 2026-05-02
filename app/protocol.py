@@ -33,7 +33,14 @@ def move_rejected(reason: str) -> dict[str, Any]:
     return message("move_rejected", {"reason": reason})
 
 
-def joined(slot_id: int, player_id: int, color: str, board_size: int, series_length: int) -> dict[str, Any]:
+def joined(
+    slot_id: int,
+    player_id: int,
+    color: str,
+    board_size: int,
+    series_length: int,
+    reconnect_token: str,
+) -> dict[str, Any]:
     return message(
         "joined",
         {
@@ -42,7 +49,30 @@ def joined(slot_id: int, player_id: int, color: str, board_size: int, series_len
             "color": color,
             "board_size": board_size,
             "series_length": series_length,
+            "reconnect_token": reconnect_token,
             "protocol_version": PROTOCOL_VERSION,
+        },
+    )
+
+
+def reconnected(
+    slot_id: int,
+    player_id: int,
+    color: str,
+    board_size: int,
+    series_length: int,
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    return message(
+        "reconnected",
+        {
+            "slot_id": slot_id,
+            "player": player_id,
+            "color": color,
+            "board_size": board_size,
+            "series_length": series_length,
+            "protocol_version": PROTOCOL_VERSION,
+            "slot": snapshot,
         },
     )
 
@@ -123,8 +153,19 @@ def series_over(
     )
 
 
-def opponent_disconnected() -> dict[str, Any]:
-    return message("opponent_disconnected", {"message": "Your opponent disconnected"})
+def opponent_disconnected(reconnect_timeout_seconds: int, reason: str = "waiting_for_reconnect") -> dict[str, Any]:
+    return message(
+        "opponent_disconnected",
+        {
+            "message": "Your opponent disconnected",
+            "reason": reason,
+            "reconnect_timeout_seconds": reconnect_timeout_seconds,
+        },
+    )
+
+
+def opponent_reconnected(player_id: int) -> dict[str, Any]:
+    return message("opponent_reconnected", {"player": player_id})
 
 
 def pong() -> dict[str, Any]:

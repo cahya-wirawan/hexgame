@@ -4,7 +4,7 @@ FastAPI-based Hex game server with WebSocket matchmaking, authoritative game
 state, win detection, a random-move test client, and a Vite/Tailwind/shadcn-ui
 overview dashboard.
 
-The current implementation covers Phases 1-5 from `PLAN.md`:
+The current implementation covers Phases 1-6 from `PLAN.md`:
 
 - Fixed in-memory game slots.
 - Board-size-aware matchmaking.
@@ -14,9 +14,10 @@ The current implementation covers Phases 1-5 from `PLAN.md`:
 - Hex win detection.
 - `/overview` monitoring page.
 - Model-driven clients, including a pygame GUI client for visual board output.
+- Reconnect tokens and `/ws/reconnect` support for temporary network drops.
 
-Reconnect support, Redis, database persistence, user accounts, ratings, and
-multi-worker deployment are intentionally not implemented yet.
+Redis, database persistence, user accounts, ratings, and multi-worker
+deployment are intentionally not implemented yet.
 
 ## Requirements
 
@@ -112,7 +113,10 @@ Example:
     "board_size": 11,
     "series_length": 3,
     "player_count": 2,
+    "connected_player_count": 2,
     "players": [-1, 1],
+    "connected_players": [-1, 1],
+    "disconnected_players": [],
     "current_turn": -1,
     "winner": null,
     "move_count": 8,
@@ -148,6 +152,12 @@ Allowed series lengths:
 
 `series_length` defaults to `1`. The server only matches players who request
 the same board size and the same series length.
+
+`/ws/reconnect?slot_id=1&token=<reconnect_token>`
+
+Reconnects a player to a reserved seat after a temporary disconnect. The token
+is issued only to that client in the `joined` payload. It is not exposed by
+`/slots` or the overview dashboard.
 
 ## WebSocket Protocol
 
@@ -231,7 +241,35 @@ WebSocket connection.
     "color": "red",
     "board_size": 11,
     "series_length": 3,
+    "reconnect_token": "client-private-token",
     "protocol_version": 1
+  }
+}
+```
+
+Store `reconnect_token` client-side for the current match. Treat it like a
+short-lived secret: it proves ownership of the reserved seat.
+
+`reconnected`
+
+```json
+{
+  "type": "reconnected",
+  "payload": {
+    "slot_id": 1,
+    "player": 1,
+    "color": "blue",
+    "board_size": 11,
+    "series_length": 3,
+    "protocol_version": 1,
+    "slot": {
+      "slot_id": 1,
+      "state": "full",
+      "connected_players": [-1, 1],
+      "disconnected_players": [],
+      "current_turn": -1,
+      "move_count": 8
+    }
   }
 }
 ```
@@ -344,6 +382,7 @@ Other server messages:
 - `chat`
 - `error`
 - `opponent_disconnected`
+- `opponent_reconnected`
 
 ### Player IDs
 
@@ -381,11 +420,32 @@ messages, and any extra `player` field in a move payload is ignored.
 The server rejects moves when:
 
 - The game has not started.
+- The game is paused while a disconnected opponent is inside the reconnect
+  window.
 - The game is already finished.
 - It is not the sender's turn.
 - Coordinates are outside the board.
 - The target cell is occupied.
 - The payload is malformed.
+
+## Reconnect Behavior
+
+When a player disconnects, the server keeps the slot, game board, series score,
+and seat assignment in memory for `RECONNECT_TIMEOUT_SECONDS` from
+`app/config.py`. The remaining player receives `opponent_disconnected` and the
+match is paused. During the pause, moves are rejected with
+`Game paused for reconnect`.
+
+The disconnected client reconnects with:
+
+```text
+ws://127.0.0.1:8000/ws/reconnect?slot_id=1&token=<reconnect_token>
+```
+
+If the token is valid and the timeout has not expired, the server sends
+`reconnected` with the current public slot snapshot and notifies the opponent
+with `opponent_reconnected`. If the timeout expires first, the slot is reset and
+the remaining player is notified and closed.
 
 ## Clients
 
@@ -451,6 +511,12 @@ occupied cell, an out-of-bounds cell, a scalar, or coordinates in `{q, r}`
 order by mistake, the client stops with a clear model move error instead of
 sending an illegal move to the server.
 
+Model clients also export a small JSONL replay log by default under
+`examples/replays/`. The log records server messages, applied moves, model
+choices, rejected moves, terminal events, and board snapshots around model
+decisions. Use `--replay-log off` to disable it or `--replay-log path.jsonl` to
+choose an explicit export path.
+
 Run two model clients:
 
 ```bash
@@ -481,7 +547,8 @@ python -m examples.hex_client_gui \
   --board-size 7 \
   --series-length 3 \
   --seed 42 \
-  --move-delay 0.1
+  --move-delay 0.1 \
+  --replay-log auto
 ```
 
 Close the GUI with `Esc`, `Q`, or the window close button.

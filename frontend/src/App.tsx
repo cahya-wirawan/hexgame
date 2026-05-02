@@ -13,7 +13,10 @@ type SlotSnapshot = {
   board_size: number | null;
   series_length: number | null;
   player_count: number;
+  connected_player_count: number;
   players: number[];
+  connected_players: number[];
+  disconnected_players: number[];
   current_turn: number | null;
   winner: number | null;
   move_count: number;
@@ -30,6 +33,11 @@ const stateTone: Record<SlotState, "empty" | "waiting" | "full"> = {
   waiting: "waiting",
   full: "full"
 };
+
+const playerGoals = [
+  { player: -1, label: "player_1", color: "Red", goal: "Left to right", swatch: "bg-red-600" },
+  { player: 1, label: "player_2", color: "Blue", goal: "Top to bottom", swatch: "bg-blue-600" }
+];
 
 function BoardPreview({ board }: { board: SlotSnapshot["board"] }) {
   if (!board) {
@@ -137,7 +145,15 @@ export default function App() {
                 </div>
                 <div>
                   <dt className="text-slate-500">Occupancy</dt>
-                  <dd className="font-medium">{slot.player_count}/2</dd>
+                  <dd className="font-medium">
+                    {slot.connected_player_count ?? slot.player_count}/{slot.player_count || 2} connected
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Disconnected</dt>
+                  <dd className="font-medium">
+                    {slot.disconnected_players.length ? slot.disconnected_players.join(", ") : "None"}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">Turn</dt>
@@ -170,6 +186,17 @@ export default function App() {
                     ) : (
                       "None"
                     )}
+                  </dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-slate-500">Goal Directions</dt>
+                  <dd className="mt-1 grid gap-1">
+                    {playerGoals.map((goal) => (
+                      <span key={goal.player} className="flex items-center gap-2 font-medium">
+                        <span className={`h-2.5 w-2.5 rounded-sm ${goal.swatch}`} />
+                        {goal.label} ({goal.player}, {goal.color}): {goal.goal}
+                      </span>
+                    ))}
                   </dd>
                 </div>
               </dl>

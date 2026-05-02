@@ -11,9 +11,9 @@ import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
 try:
-    from examples.client_safety import InvalidModelMove, apply_server_move, model_move_to_payload
+    from examples.client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, model_move_to_payload
 except ModuleNotFoundError:
-    from client_safety import InvalidModelMove, apply_server_move, model_move_to_payload
+    from client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, model_move_to_payload
 
 MODEL_TO_COLOR = {
     -1: "red",
@@ -40,9 +40,9 @@ class HexBoardViewer:
     FPS = 60
     BOARD_TOP = 120
     BOARD_LEFT = 90
-    PANEL_LEFT = 760
+    PANEL_LEFT = 730
     PANEL_TOP = 72
-    PANEL_WIDTH = 308
+    PANEL_WIDTH = 340
 
     COLORS = {
         "background": (246, 248, 251),
@@ -134,6 +134,7 @@ class HexBoardViewer:
         last_move: tuple[int, int] | None,
         last_move_player: int | None,
         pending_move: bool,
+        replay_path: str | None,
     ) -> None:
         self.pump_events()
         self.screen.fill(self.COLORS["background"])
@@ -153,6 +154,7 @@ class HexBoardViewer:
             last_move=last_move,
             last_move_player=last_move_player,
             pending_move=pending_move,
+            replay_path=replay_path,
         )
         self.pygame.display.flip()
 
@@ -214,6 +216,7 @@ class HexBoardViewer:
         last_move: tuple[int, int] | None,
         last_move_player: int | None,
         pending_move: bool,
+        replay_path: str | None,
     ) -> None:
         pygame = self.pygame
         panel_rect = pygame.Rect(self.PANEL_LEFT, self.PANEL_TOP, self.PANEL_WIDTH, 610)
@@ -229,6 +232,7 @@ class HexBoardViewer:
         y = self._draw_status_line("Game", f"{game_number if game_number is not None else '-'} / {series_length}", y)
         y = self._draw_status_line("Score", f"{score[0]} : {score[1]}", y)
         y = self._draw_status_line("Moves", str(move_count), y)
+        y = self._draw_status_line("Replay", replay_path or "off", y)
         y += 8
 
         self._draw_text("Players", self.PANEL_LEFT + 18, y, self.small_font, self.COLORS["text"])
@@ -294,9 +298,24 @@ class HexBoardViewer:
         return value if len(value) <= max_chars else value[: max_chars - 1] + "."
 
 
-async def run(model_name: str, server: str, board_size: int, series_length: int, seed: int | None, move_delay: float) -> None:
+async def run(
+    model_name: str,
+    server: str,
+    board_size: int,
+    series_length: int,
+    seed: int | None,
+    move_delay: float,
+    replay_log: str,
+) -> None:
     model = importlib.import_module(model_name)
     agent = getattr(model, "agent")
+    replay = MatchReplayLog.create(
+        replay_log,
+        model_name=model_name,
+        board_size=board_size,
+        series_length=series_length,
+    )
+    replay_path = str(replay.path) if replay.path is not None else None
 
     uri = f"{server.rstrip('/')}/ws/matchmake?board_size={board_size}&series_length={series_length}"
     player_id: int | None = None
@@ -310,6 +329,16 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
     last_move: tuple[int, int] | None = None
     last_move_player: int | None = None
     status = "Connecting"
+    replay.record(
+        "client_start",
+        model_name=model_name,
+        server=server,
+        board_size=board_size,
+        series_length=series_length,
+        seed=seed,
+        move_delay=move_delay,
+        gui=True,
+    )
     viewer = HexBoardViewer(board_size)
     viewer.draw(
         board,
@@ -325,6 +354,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
         last_move=last_move,
         last_move_player=last_move_player,
         pending_move=pending_move,
+        replay_path=replay_path,
     )
 
     try:
@@ -336,10 +366,12 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                 message: dict[str, Any] = json.loads(raw)
                 message_type = message.get("type")
                 payload = message.get("payload", {})
+                replay.record("server_message", message_type=message_type, payload=payload)
 
                 if message_type == "joined":
                     player_id = payload["player"]
                     slot_id = payload.get("slot_id")
+                    replay.record("joined", player=player_id, slot_id=slot_id, color=payload.get("color"))
                     status = f"Joined slot {payload.get('slot_id')}"
                 elif message_type == "waiting_for_opponent":
                     status = "Waiting for opponent"
@@ -352,6 +384,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                     move_count = 0
                     last_move = None
                     last_move_player = None
+                    replay.record("game_start", payload=payload)
                     status = "Game started"
                 elif message_type == "move":
                     q = payload["q"]
@@ -359,6 +392,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                     try:
                         apply_server_move(board, q, r, payload["player"])
                     except InvalidModelMove as exc:
+                        replay.record("client_state_error", error=str(exc), payload=payload, board=board)
                         viewer.draw(
                             board,
                             status=f"Client state error: {exc}",
@@ -373,6 +407,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                             last_move=last_move,
                             last_move_player=last_move_player,
                             pending_move=pending_move,
+                            replay_path=replay_path,
                         )
                         await viewer.wait_until_closed()
                         return
@@ -381,13 +416,16 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                     move_count += 1
                     last_move = (r, q)
                     last_move_player = payload["player"]
+                    replay.record("server_move_applied", q=q, r=r, player=payload["player"], next_turn=current_turn, board=board)
                     status = f"Move: row={r}, col={q}"
                 elif message_type == "move_rejected":
                     pending_move = False
+                    replay.record("move_rejected", payload=payload, board=board)
                     status = f"Move rejected: {payload.get('reason')}"
                 elif message_type == "game_over":
                     current_turn = None
                     pending_move = False
+                    replay.record("game_over", payload=payload, board=board)
                     status = f"Game over: {payload.get('winner')} wins"
                 elif message_type == "series_update":
                     score = (payload.get("player_1_wins", score[0]), payload.get("player_2_wins", score[1]))
@@ -395,6 +433,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                     status = "Series score updated"
                 elif message_type == "series_over":
                     score = (payload.get("player_1_wins", score[0]), payload.get("player_2_wins", score[1]))
+                    replay.record("series_over", payload=payload, board=board)
                     viewer.draw(
                         board,
                         status=f"Series over: {payload.get('winner')} wins",
@@ -409,6 +448,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                         last_move=last_move,
                         last_move_player=last_move_player,
                         pending_move=pending_move,
+                        replay_path=replay_path,
                     )
                     await viewer.wait_until_closed()
                     return
@@ -427,6 +467,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                         last_move=last_move,
                         last_move_player=last_move_player,
                         pending_move=pending_move,
+                        replay_path=replay_path,
                     )
                     await viewer.wait_until_closed()
                     return
@@ -445,6 +486,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                         last_move=last_move,
                         last_move_player=last_move_player,
                         pending_move=pending_move,
+                        replay_path=replay_path,
                     )
                     await viewer.wait_until_closed()
                     return
@@ -463,6 +505,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                     last_move=last_move,
                     last_move_player=last_move_player,
                     pending_move=pending_move,
+                    replay_path=replay_path,
                 )
 
                 if player_id is not None and current_turn == player_id and not pending_move:
@@ -485,13 +528,16 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                         last_move=last_move,
                         last_move_player=last_move_player,
                         pending_move=pending_move,
+                        replay_path=replay_path,
                     )
                     await asyncio.sleep(move_delay)
                     if not viewer.pump_events():
                         return
                     try:
-                        move_payload = model_move_to_payload(agent(board, cells), cells)
+                        raw_move = agent(board, cells)
+                        move_payload = model_move_to_payload(raw_move, cells)
                     except InvalidModelMove as exc:
+                        replay.record("model_move_error", error=str(exc), legal_moves=cells, board=board)
                         viewer.draw(
                             board,
                             status=f"Model move error: {exc}",
@@ -506,10 +552,20 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                             last_move=last_move,
                             last_move_player=last_move_player,
                             pending_move=pending_move,
+                            replay_path=replay_path,
                         )
                         await viewer.wait_until_closed()
                         return
+                    replay.record(
+                        "model_move",
+                        player=player_id,
+                        raw_move=raw_move,
+                        payload=move_payload,
+                        legal_move_count=len(cells),
+                        board=board,
+                    )
                     status = f"Sent move: row={move_payload['r']}, col={move_payload['q']}"
+                    replay.record("client_send", message_type="move", payload=move_payload)
                     await websocket.send(json.dumps({"type": "move", "payload": move_payload}))
     except (InvalidStatus, InvalidStatusCode) as exc:
         raise SystemExit(
@@ -527,8 +583,23 @@ def main() -> None:
     parser.add_argument("--seed", type=int)
     parser.add_argument("--move-delay", type=float, default=0.1)
     parser.add_argument("--model-name", type=str, default="model_random")
+    parser.add_argument(
+        "--replay-log",
+        default="auto",
+        help="Path for JSONL replay export, 'auto' for examples/replays, or 'off' to disable.",
+    )
     args = parser.parse_args()
-    asyncio.run(run(args.model_name, args.server, args.board_size, args.series_length, args.seed, args.move_delay))
+    asyncio.run(
+        run(
+            args.model_name,
+            args.server,
+            args.board_size,
+            args.series_length,
+            args.seed,
+            args.move_delay,
+            args.replay_log,
+        )
+    )
 
 
 if __name__ == "__main__":

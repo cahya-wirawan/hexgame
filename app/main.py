@@ -64,3 +64,15 @@ async def websocket_matchmake(websocket: WebSocket, board_size: int, series_leng
         return
 
     await websocket_game_manager.start(websocket, assignment)
+
+
+@app.websocket("/ws/reconnect")
+async def websocket_reconnect(websocket: WebSocket, slot_id: int, token: str):
+    await websocket.accept()
+    assignment, failure = await slot_manager.reconnect_slot(websocket, slot_id, token)
+    if failure is not None or assignment is None:
+        await websocket.send_json(error(failure or "Reconnect failed"))
+        await websocket.close(code=1008)
+        return
+
+    await websocket_game_manager.start(websocket, assignment, is_reconnect=True)

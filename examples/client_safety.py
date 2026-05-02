@@ -1,12 +1,51 @@
 from __future__ import annotations
 
+import json
 import operator
+from datetime import datetime, timezone
+from pathlib import Path
 from collections.abc import Iterable
 from typing import Any
 
 
 class InvalidModelMove(ValueError):
     pass
+
+
+class MatchReplayLog:
+    def __init__(self, path: str | Path | None):
+        self.path = Path(path) if path else None
+        if self.path is not None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def create(
+        cls,
+        replay_log: str,
+        *,
+        model_name: str,
+        board_size: int,
+        series_length: int,
+    ) -> "MatchReplayLog":
+        if replay_log.lower() in {"off", "none", "false", "0"}:
+            return cls(None)
+        if replay_log != "auto":
+            return cls(replay_log)
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        filename = f"{timestamp}_{model_name}_{board_size}x{board_size}_bo{series_length}.jsonl"
+        return cls(Path("examples") / "replays" / filename)
+
+    def record(self, event: str, **fields: Any) -> None:
+        if self.path is None:
+            return
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "event": event,
+            **_jsonable(fields),
+        }
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, separators=(",", ":")) + "\n")
 
 
 def normalize_model_move(move: Any, legal_moves: Iterable[tuple[int, int]]) -> tuple[int, int]:
@@ -49,3 +88,13 @@ def _coerce_coordinate(value: Any, name: str) -> int:
         return operator.index(value)
     except TypeError as exc:
         raise InvalidModelMove(f"{name} coordinate must be an integer, got {value!r}") from exc
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, Path):
+        return str(value)
+    return value

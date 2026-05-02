@@ -1592,13 +1592,17 @@ Server can determine when a Hex game ends.
 
 ### Phase 6: Reconnect support
 
+Status: implemented.
+
 Implement:
 
 ```text
-- reconnect_token
-- temporary seat reservation
-- reconnect timeout
+- reconnect_token issued in joined messages
+- temporary seat reservation after disconnect
+- reconnect timeout with slot reset when the token is not used
 - /ws/reconnect endpoint
+- public slot snapshots showing connected/disconnected players without tokens
+- paused gameplay while one player is disconnected
 ```
 
 Goal:

@@ -11,9 +11,9 @@ import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
 try:
-    from examples.client_safety import InvalidModelMove, apply_server_move, model_move_to_payload
+    from examples.client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, model_move_to_payload
 except ModuleNotFoundError:
-    from client_safety import InvalidModelMove, apply_server_move, model_move_to_payload
+    from client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, model_move_to_payload
 
 MODEL_TO_COLOR = {
     -1: "red",
@@ -60,15 +60,40 @@ def print_board(board: list[list[int | None]], title: str = "Board") -> None:
     print()
 
 
-async def run(model_name: str, server: str, board_size: int, series_length: int, seed: int | None, move_delay: float) -> None:
+async def run(
+    model_name: str,
+    server: str,
+    board_size: int,
+    series_length: int,
+    seed: int | None,
+    move_delay: float,
+    replay_log: str,
+) -> None:
     model = importlib.import_module(model_name)
     agent = getattr(model, "agent")
+    replay = MatchReplayLog.create(
+        replay_log,
+        model_name=model_name,
+        board_size=board_size,
+        series_length=series_length,
+    )
 
     uri = f"{server.rstrip('/')}/ws/matchmake?board_size={board_size}&series_length={series_length}"
     player_id: int | None = None
     current_turn: int | None = None
     board: list[list[int | None]] = [[0 for _ in range(board_size)] for _ in range(board_size)]
     pending_move = False
+    replay.record(
+        "client_start",
+        model_name=model_name,
+        server=server,
+        board_size=board_size,
+        series_length=series_length,
+        seed=seed,
+        move_delay=move_delay,
+    )
+    if replay.path is not None:
+        print(f"Replay log: {replay.path}")
 
     try:
         async with websockets.connect(uri) as websocket:
@@ -77,31 +102,39 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                 message_type = message.get("type")
                 payload = message.get("payload", {})
                 print(message)
+                replay.record("server_message", message_type=message_type, payload=payload)
 
                 if message_type == "joined":
                     player_id = payload["player"]
+                    replay.record("joined", player=player_id, slot_id=payload.get("slot_id"), color=payload.get("color"))
                 elif message_type == "game_start":
                     current_turn = payload["first_turn"]
                     board = [[0 for _ in range(board_size)] for _ in range(board_size)]
                     pending_move = False
+                    replay.record("game_start", payload=payload)
                 elif message_type == "move":
                     q = payload["q"]
                     r = payload["r"]
                     try:
                         apply_server_move(board, q, r, payload["player"])
                     except InvalidModelMove as exc:
+                        replay.record("client_state_error", error=str(exc), payload=payload, board=board)
                         print(f"Client state error: {exc}")
                         print_board(board, "Local board before rejecting server message")
                         return
                     current_turn = payload.get("next_turn")
                     pending_move = False
+                    replay.record("server_move_applied", q=q, r=r, player=payload["player"], next_turn=current_turn, board=board)
                 elif message_type == "move_rejected":
                     pending_move = False
+                    replay.record("move_rejected", payload=payload, board=board)
                 elif message_type == "game_over":
                     current_turn = None
                     pending_move = False
+                    replay.record("game_over", payload=payload, board=board)
                 elif message_type == "series_over":
                     winner_id = payload.get("winner")
+                    replay.record("series_over", payload=payload, board=board)
                     winner = f"{MODEL_TO_PLAYER.get(winner_id, winner_id)}"
                     winner += f" ({MODEL_TO_COLOR.get(winner_id, 'unknown color')})"
                     print_board(
@@ -122,12 +155,23 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                         return
                     await asyncio.sleep(move_delay)
                     try:
-                        move_payload = model_move_to_payload(agent(board, cells), cells)
+                        raw_move = agent(board, cells)
+                        move_payload = model_move_to_payload(raw_move, cells)
                     except InvalidModelMove as exc:
+                        replay.record("model_move_error", error=str(exc), legal_moves=cells, board=board)
                         print(f"Model move error: {exc}")
                         print_board(board, "Board at model error")
                         return
+                    replay.record(
+                        "model_move",
+                        player=player_id,
+                        raw_move=raw_move,
+                        payload=move_payload,
+                        legal_move_count=len(cells),
+                        board=board,
+                    )
                     pending_move = True
+                    replay.record("client_send", message_type="move", payload=move_payload)
                     await websocket.send(json.dumps({"type": "move", "payload": move_payload}))
     except (InvalidStatus, InvalidStatusCode) as exc:
         raise SystemExit(
@@ -145,8 +189,23 @@ def main() -> None:
     parser.add_argument("--seed", type=int)
     parser.add_argument("--move-delay", type=float, default=0.1)
     parser.add_argument("--model-name", type=str, default="model_random")
+    parser.add_argument(
+        "--replay-log",
+        default="auto",
+        help="Path for JSONL replay export, 'auto' for examples/replays, or 'off' to disable.",
+    )
     args = parser.parse_args()
-    asyncio.run(run(args.model_name, args.server, args.board_size, args.series_length, args.seed, args.move_delay))
+    asyncio.run(
+        run(
+            args.model_name,
+            args.server,
+            args.board_size,
+            args.series_length,
+            args.seed,
+            args.move_delay,
+            args.replay_log,
+        )
+    )
 
 
 if __name__ == "__main__":

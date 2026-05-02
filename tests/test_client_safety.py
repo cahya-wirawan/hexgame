@@ -1,6 +1,12 @@
 import pytest
 
-from examples.client_safety import InvalidModelMove, apply_server_move, model_move_to_payload, normalize_model_move
+from examples.client_safety import (
+    InvalidModelMove,
+    MatchReplayLog,
+    apply_server_move,
+    model_move_to_payload,
+    normalize_model_move,
+)
 
 
 class IndexableInt:
@@ -80,3 +86,30 @@ def test_apply_server_move_rejects_out_of_bounds_without_mutating_board():
         apply_server_move(board, q=2, r=0, player=-1)
 
     assert board == [[0, 0], [0, 0]]
+
+
+def test_match_replay_log_writes_json_lines(tmp_path):
+    replay_path = tmp_path / "match.jsonl"
+    replay = MatchReplayLog(replay_path)
+
+    replay.record("model_move", raw_move=(1, 2), payload={"q": 2, "r": 1}, board=[[0, -1]])
+
+    assert replay_path.read_text(encoding="utf-8").splitlines()[0].endswith(
+        '"event":"model_move","raw_move":[1,2],"payload":{"q":2,"r":1},"board":[[0,-1]]}'
+    )
+
+
+def test_match_replay_log_auto_uses_examples_replays_directory():
+    replay = MatchReplayLog.create("auto", model_name="model_first", board_size=7, series_length=3)
+
+    assert replay.path is not None
+    assert replay.path.parent.as_posix() == "examples/replays"
+    assert "model_first_7x7_bo3" in replay.path.name
+
+
+def test_match_replay_log_can_be_disabled(tmp_path):
+    replay = MatchReplayLog.create("off", model_name="model_first", board_size=7, series_length=1)
+
+    replay.record("ignored", path=tmp_path / "unused.jsonl")
+
+    assert replay.path is None

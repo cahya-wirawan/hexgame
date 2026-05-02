@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import json
 import random
 from typing import Any
@@ -9,22 +10,31 @@ from typing import Any
 import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
+# from .model_random import agent
 
-def empty_cells(board: list[list[str | None]]) -> list[tuple[int, int]]:
+module_name = "model_random"
+function_name = "agent"
+
+module = importlib.import_module(module_name)
+agent = getattr(module, function_name)
+
+def empty_cells(board: list[list[int | None]]) -> list[tuple[int, int]]:
     return [
-        (q, r)
+        (r, q)
         for r, row in enumerate(board)
         for q, cell in enumerate(row)
-        if cell is None
+        if cell == 0
     ]
 
 
-async def run(server: str, board_size: int, series_length: int, seed: int | None, move_delay: float) -> None:
-    rng = random.Random(seed)
+async def run(model_name: str, server: str, board_size: int, series_length: int, seed: int | None, move_delay: float) -> None:
+    model = importlib.import_module(model_name)
+    agent = getattr(model, "agent")
+
     uri = f"{server.rstrip('/')}/ws/matchmake?board_size={board_size}&series_length={series_length}"
-    player_id: str | None = None
-    current_turn: str | None = None
-    board: list[list[str | None]] = [[None for _ in range(board_size)] for _ in range(board_size)]
+    player_id: int | None = None
+    current_turn: int | None = None
+    board: list[list[int | None]] = [[0 for _ in range(board_size)] for _ in range(board_size)]
     pending_move = False
 
     try:
@@ -39,7 +49,7 @@ async def run(server: str, board_size: int, series_length: int, seed: int | None
                     player_id = payload["player"]
                 elif message_type == "game_start":
                     current_turn = payload["first_turn"]
-                    board = [[None for _ in range(board_size)] for _ in range(board_size)]
+                    board = [[0 for _ in range(board_size)] for _ in range(board_size)]
                     pending_move = False
                 elif message_type == "move":
                     q = payload["q"]
@@ -60,9 +70,9 @@ async def run(server: str, board_size: int, series_length: int, seed: int | None
                     if not cells:
                         return
                     await asyncio.sleep(move_delay)
-                    q, r = rng.choice(cells)
+                    row, col  = agent(board, cells)
                     pending_move = True
-                    await websocket.send(json.dumps({"type": "move", "payload": {"q": q, "r": r}}))
+                    await websocket.send(json.dumps({"type": "move", "payload": {"q": col, "r": row}}))
     except (InvalidStatus, InvalidStatusCode) as exc:
         raise SystemExit(
             f"WebSocket connection rejected by {uri}: {exc}\n"
@@ -78,8 +88,9 @@ def main() -> None:
     parser.add_argument("--series-length", type=int, default=1)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--move-delay", type=float, default=0.1)
+    parser.add_argument("--model-name", type=str, default="model_random")
     args = parser.parse_args()
-    asyncio.run(run(args.server, args.board_size, args.series_length, args.seed, args.move_delay))
+    asyncio.run(run(args.model_name, args.server, args.board_size, args.series_length, args.seed, args.move_delay))
 
 
 if __name__ == "__main__":

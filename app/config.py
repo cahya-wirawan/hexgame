@@ -1,10 +1,11 @@
 MAX_SLOTS = 5
 ALLOWED_BOARD_SIZES = {7, 9, 11, 13, 19}
+ALLOWED_SERIES_LENGTHS = {1, 3, 5, 7}
 PROTOCOL_VERSION = 1
 
-PLAYER_1 = "player_1"
-PLAYER_2 = "player_2"
+PLAYER_1 = -1
+PLAYER_2 = 1
 PLAYER_COLORS = {
-    PLAYER_1: "blue",
-    PLAYER_2: "red",
+    PLAYER_1: "red",
+    PLAYER_2: "blue",
 }

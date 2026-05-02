@@ -19,11 +19,11 @@ DIRECTIONS = [
 class MoveResult:
     accepted: bool
     reason: str | None = None
-    winner: str | None = None
-    next_turn: str | None = None
+    winner: int | None = None
+    next_turn: int | None = None
 
 
-def other_player(player_id: str) -> str:
+def other_player(player_id: int) -> int:
     return PLAYER_2 if player_id == PLAYER_1 else PLAYER_1
 
 
@@ -37,7 +37,7 @@ def validate_move_payload(payload: object) -> tuple[int, int] | str:
     return q, r
 
 
-def apply_move(game_state: HexGameState, player_id: str, q: int, r: int) -> MoveResult:
+def apply_move(game_state: HexGameState, player_id: int, q: int, r: int) -> MoveResult:
     if game_state.winner is not None:
         return MoveResult(False, "Game already finished")
     if game_state.current_turn != player_id:
@@ -46,7 +46,7 @@ def apply_move(game_state: HexGameState, player_id: str, q: int, r: int) -> Move
         return MoveResult(False, "Move outside board")
     if not 0 <= r < game_state.board_size:
         return MoveResult(False, "Move outside board")
-    if game_state.board[r][q] is not None:
+    if game_state.board[r][q] != 0:
         return MoveResult(False, "Cell already occupied")
 
     game_state.board[r][q] = player_id
@@ -60,7 +60,7 @@ def apply_move(game_state: HexGameState, player_id: str, q: int, r: int) -> Move
     return MoveResult(True, next_turn=game_state.current_turn)
 
 
-def check_winner(board: list[list[str | None]], board_size: int, player: str) -> bool:
+def check_winner(board: list[list[int | None]], board_size: int, player: int) -> bool:
     visited: set[tuple[int, int]] = set()
     stack: list[tuple[int, int]] = []
 

@@ -11,12 +11,18 @@ type SlotSnapshot = {
   slot_id: number;
   state: SlotState;
   board_size: number | null;
+  series_length: number | null;
   player_count: number;
   players: string[];
   current_turn: string | null;
   winner: string | null;
   move_count: number;
   board: (string | null)[][] | null;
+  wins_required: number | null;
+  current_game_number: number | null;
+  player_1_wins: number;
+  player_2_wins: number;
+  series_winner: string | null;
 };
 
 const stateTone: Record<SlotState, "empty" | "waiting" | "full"> = {
@@ -142,8 +148,29 @@ export default function App() {
                   <dd className="font-medium">{slot.move_count}</dd>
                 </div>
                 <div>
+                  <dt className="text-slate-500">Series</dt>
+                  <dd className="font-medium">
+                    Best of {slot.series_length ?? 1}, game {slot.current_game_number ?? 1}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Score</dt>
+                  <dd className="font-medium">
+                    {slot.player_1_wins}-{slot.player_2_wins}
+                    {slot.wins_required ? ` to ${slot.wins_required}` : ""}
+                  </dd>
+                </div>
+                <div>
                   <dt className="text-slate-500">Winner</dt>
-                  <dd className="font-medium">{slot.winner ? <Badge tone="winner">{slot.winner}</Badge> : "None"}</dd>
+                  <dd className="font-medium">
+                    {slot.series_winner ? (
+                      <Badge tone="winner">{slot.series_winner}</Badge>
+                    ) : slot.winner ? (
+                      <Badge tone="winner">{slot.winner}</Badge>
+                    ) : (
+                      "None"
+                    )}
+                  </dd>
                 </div>
               </dl>
               <BoardPreview board={slot.board} />

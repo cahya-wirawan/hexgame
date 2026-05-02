@@ -6,7 +6,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import ALLOWED_BOARD_SIZES, MAX_SLOTS
+from .config import ALLOWED_BOARD_SIZES, ALLOWED_SERIES_LENGTHS, MAX_SLOTS
 from .protocol import error
 from .slots import SlotManager
 from .websocket_manager import WebSocketGameManager
@@ -44,15 +44,20 @@ def overview():
 
 
 @app.websocket("/ws/matchmake")
-async def websocket_matchmake(websocket: WebSocket, board_size: int):
+async def websocket_matchmake(websocket: WebSocket, board_size: int, series_length: int = 1):
     if board_size not in ALLOWED_BOARD_SIZES:
         await websocket.accept()
         await websocket.send_json(error("Unsupported board size"))
         await websocket.close(code=1008)
         return
+    if series_length not in ALLOWED_SERIES_LENGTHS:
+        await websocket.accept()
+        await websocket.send_json(error("Unsupported series length"))
+        await websocket.close(code=1008)
+        return
 
     await websocket.accept()
-    assignment = await slot_manager.join_slot(websocket, board_size)
+    assignment = await slot_manager.join_slot(websocket, board_size, series_length)
     if assignment is None:
         await websocket.send_json(error("No available slot"))
         await websocket.close()

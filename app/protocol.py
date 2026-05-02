@@ -33,7 +33,7 @@ def move_rejected(reason: str) -> dict[str, Any]:
     return message("move_rejected", {"reason": reason})
 
 
-def joined(slot_id: int, player_id: str, color: str, board_size: int) -> dict[str, Any]:
+def joined(slot_id: int, player_id: str, color: str, board_size: int, series_length: int) -> dict[str, Any]:
     return message(
         "joined",
         {
@@ -41,6 +41,7 @@ def joined(slot_id: int, player_id: str, color: str, board_size: int) -> dict[st
             "player": player_id,
             "color": color,
             "board_size": board_size,
+            "series_length": series_length,
             "protocol_version": PROTOCOL_VERSION,
         },
     )
@@ -50,14 +51,28 @@ def waiting_for_opponent(slot_id: int, board_size: int) -> dict[str, Any]:
     return message("waiting_for_opponent", {"slot_id": slot_id, "board_size": board_size})
 
 
-def game_start(slot_id: int, board_size: int) -> dict[str, Any]:
+def game_start(
+    slot_id: int,
+    board_size: int,
+    first_turn: str,
+    current_game_number: int,
+    series_length: int,
+    player_1_wins: int,
+    player_2_wins: int,
+    wins_required: int,
+) -> dict[str, Any]:
     return message(
         "game_start",
         {
             "slot_id": slot_id,
             "board_size": board_size,
+            "series_length": series_length,
             "players": ["player_1", "player_2"],
-            "first_turn": "player_1",
+            "first_turn": first_turn,
+            "current_game_number": current_game_number,
+            "player_1_wins": player_1_wins,
+            "player_2_wins": player_2_wins,
+            "wins_required": wins_required,
         },
     )
 
@@ -68,6 +83,44 @@ def move(player_id: str, q: int, r: int, next_turn: str | None) -> dict[str, Any
 
 def game_over(winner: str, reason: str = "connected_sides") -> dict[str, Any]:
     return message("game_over", {"winner": winner, "reason": reason})
+
+
+def series_update(
+    player_1_wins: int,
+    player_2_wins: int,
+    current_game_number: int,
+    wins_required: int,
+    series_length: int,
+) -> dict[str, Any]:
+    return message(
+        "series_update",
+        {
+            "player_1_wins": player_1_wins,
+            "player_2_wins": player_2_wins,
+            "current_game_number": current_game_number,
+            "wins_required": wins_required,
+            "series_length": series_length,
+        },
+    )
+
+
+def series_over(
+    winner: str,
+    player_1_wins: int,
+    player_2_wins: int,
+    wins_required: int,
+    series_length: int,
+) -> dict[str, Any]:
+    return message(
+        "series_over",
+        {
+            "winner": winner,
+            "player_1_wins": player_1_wins,
+            "player_2_wins": player_2_wins,
+            "wins_required": wins_required,
+            "series_length": series_length,
+        },
+    )
 
 
 def opponent_disconnected() -> dict[str, Any]:

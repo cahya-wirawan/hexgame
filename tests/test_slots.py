@@ -48,6 +48,21 @@ async def test_client_does_not_join_waiting_slot_with_different_board_size():
 
 
 @pytest.mark.asyncio
+async def test_client_does_not_join_waiting_slot_with_different_series_length():
+    manager = SlotManager(max_slots=2)
+
+    first = await manager.join_slot(object(), 11, series_length=3)
+    second = await manager.join_slot(object(), 11, series_length=5)
+    snapshot = await manager.snapshot()
+
+    assert first is not None
+    assert second is not None
+    assert second.slot_id != first.slot_id
+    assert snapshot[0]["series_length"] == 3
+    assert snapshot[1]["series_length"] == 5
+
+
+@pytest.mark.asyncio
 async def test_full_slot_is_not_joinable_when_no_empty_slot_exists():
     manager = SlotManager(max_slots=1)
 

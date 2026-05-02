@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import WebSocket
 
 from .config import PLAYER_1, PLAYER_2, PLAYER_COLORS
-from .models import GameSlot, HexGameState, PlayerConnection, SlotAssignment
+from .models import GameSlot, HexGameState, MatchSeriesState, PlayerConnection, SlotAssignment
 
 
 class SlotManager:
@@ -17,22 +17,30 @@ class SlotManager:
         }
         self.lock = asyncio.Lock()
 
-    async def join_slot(self, websocket: WebSocket, board_size: int) -> SlotAssignment | None:
+    async def join_slot(self, websocket: WebSocket, board_size: int, series_length: int = 1) -> SlotAssignment | None:
         async with self.lock:
-            slot = self._find_waiting_slot(board_size) or self._find_empty_slot()
+            slot = self._find_waiting_slot(board_size, series_length) or self._find_empty_slot()
             if slot is None:
                 return None
 
             if slot.state == "empty":
                 slot.board_size = board_size
+                slot.series_length = series_length
+                slot.series_state = MatchSeriesState.create(series_length)
                 slot.player_1 = PlayerConnection(websocket, PLAYER_1, PLAYER_COLORS[PLAYER_1])
                 slot.state = "waiting"
                 return self._assignment(slot, PLAYER_1)
 
-            if slot.state == "waiting" and slot.board_size == board_size and slot.player_2 is None:
+            if (
+                slot.state == "waiting"
+                and slot.board_size == board_size
+                and slot.series_length == series_length
+                and slot.player_2 is None
+            ):
                 slot.player_2 = PlayerConnection(websocket, PLAYER_2, PLAYER_COLORS[PLAYER_2])
                 slot.state = "full"
-                slot.game_state = HexGameState.create(board_size)
+                first_turn = slot.series_state.first_turn() if slot.series_state else PLAYER_1
+                slot.game_state = HexGameState.create(board_size, first_turn=first_turn)
                 return self._assignment(slot, PLAYER_2)
 
             return None
@@ -81,6 +89,48 @@ class SlotManager:
             connections = [slot.player_1, slot.player_2]
             return (result, connections), None
 
+    async def record_game_result(self, slot_id: int, winner: str):
+        async with self.lock:
+            slot = self.slots.get(slot_id)
+            if slot is None or slot.series_state is None or slot.board_size is None:
+                return None, "Game has not started"
+
+            slot.series_state.record_win(winner)
+            connections = [slot.player_1, slot.player_2]
+            if slot.series_state.series_winner is not None:
+                return (
+                    {
+                        "series_length": slot.series_state.series_length,
+                        "wins_required": slot.series_state.wins_required,
+                        "player_1_wins": slot.series_state.player_1_wins,
+                        "player_2_wins": slot.series_state.player_2_wins,
+                        "current_game_number": slot.series_state.current_game_number,
+                        "series_winner": slot.series_state.series_winner,
+                        "next_game_started": False,
+                        "first_turn": None,
+                    },
+                    connections,
+                ), None
+
+            slot.series_state.current_game_number += 1
+            first_turn = slot.series_state.first_turn()
+            slot.game_state = HexGameState.create(slot.board_size, first_turn=first_turn)
+            return (
+                {
+                    "series_length": slot.series_state.series_length,
+                    "wins_required": slot.series_state.wins_required,
+                    "player_1_wins": slot.series_state.player_1_wins,
+                    "player_2_wins": slot.series_state.player_2_wins,
+                    "current_game_number": slot.series_state.current_game_number,
+                    "series_winner": None,
+                    "next_game_started": True,
+                    "first_turn": first_turn,
+                    "board_size": slot.board_size,
+                    "slot_id": slot.slot_id,
+                },
+                connections,
+            ), None
+
     async def connections_for_slot(self, slot_id: int) -> list[PlayerConnection]:
         async with self.lock:
             slot = self.slots.get(slot_id)
@@ -92,9 +142,14 @@ class SlotManager:
                 if connection is not None
             ]
 
-    def _find_waiting_slot(self, board_size: int) -> GameSlot | None:
+    def _find_waiting_slot(self, board_size: int, series_length: int) -> GameSlot | None:
         for slot in self.slots.values():
-            if slot.state == "waiting" and slot.board_size == board_size and slot.player_2 is None:
+            if (
+                slot.state == "waiting"
+                and slot.board_size == board_size
+                and slot.series_length == series_length
+                and slot.player_2 is None
+            ):
                 return slot
         return None
 
@@ -106,13 +161,14 @@ class SlotManager:
 
     def _assignment(self, slot: GameSlot, player_id: str) -> SlotAssignment:
         connection = slot.get_connection(player_id)
-        if connection is None or slot.board_size is None:
+        if connection is None or slot.board_size is None or slot.series_length is None:
             raise RuntimeError("slot assignment requested before player was assigned")
         return SlotAssignment(
             slot_id=slot.slot_id,
             player_id=player_id,
             color=connection.color,
             board_size=slot.board_size,
+            series_length=slot.series_length,
             opponent_connected=slot.player_1 is not None and slot.player_2 is not None,
             player_1=slot.player_1,
             player_2=slot.player_2,

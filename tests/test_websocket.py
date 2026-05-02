@@ -46,6 +46,23 @@ def test_clients_with_different_board_sizes_do_not_share_slot():
             assert waiting_2["type"] == "waiting_for_opponent"
 
 
+def test_clients_with_different_series_lengths_do_not_share_slot():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=11&series_length=3") as player_1:
+        player_1.receive_json()
+        player_1.receive_json()
+
+        with client.websocket_connect("/ws/matchmake?board_size=11&series_length=5") as player_2:
+            joined_2 = player_2.receive_json()
+            waiting_2 = player_2.receive_json()
+
+            assert joined_2["payload"]["player"] == "player_1"
+            assert joined_2["payload"]["slot_id"] == 2
+            assert joined_2["payload"]["series_length"] == 5
+            assert waiting_2["type"] == "waiting_for_opponent"
+
+
 def test_invalid_board_size_gets_structured_error():
     client = TestClient(app)
 
@@ -53,6 +70,15 @@ def test_invalid_board_size_gets_structured_error():
         message = websocket.receive_json()
 
     assert message == {"type": "error", "payload": {"message": "Unsupported board size"}}
+
+
+def test_invalid_series_length_gets_structured_error():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=11&series_length=2") as websocket:
+        message = websocket.receive_json()
+
+    assert message == {"type": "error", "payload": {"message": "Unsupported series length"}}
 
 
 def test_move_spoofing_is_ignored_and_authoritative_moves_are_broadcast():
@@ -124,6 +150,69 @@ def test_game_over_is_emitted_for_player_1_win():
                 player_2.send_json({"type": "move", "payload": {"q": p2_move[0], "r": p2_move[1]}})
                 assert player_1.receive_json()["type"] == "move"
                 assert player_2.receive_json()["type"] == "move"
+
+
+def test_best_of_three_continues_after_first_game_and_then_emits_series_over():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=7&series_length=3") as player_1:
+        player_1.receive_json()
+        player_1.receive_json()
+        with client.websocket_connect("/ws/matchmake?board_size=7&series_length=3") as player_2:
+            player_2.receive_json()
+            first_start_1 = player_1.receive_json()
+            first_start_2 = player_2.receive_json()
+            assert first_start_1["payload"]["first_turn"] == "player_1"
+            assert first_start_2["payload"]["wins_required"] == 2
+
+            play_player_1_column_win(player_1, player_2)
+            assert player_1.receive_json()["type"] == "game_over"
+            assert player_2.receive_json()["type"] == "game_over"
+            update_1 = player_1.receive_json()
+            update_2 = player_2.receive_json()
+            assert update_1["type"] == "series_update"
+            assert update_1["payload"]["player_1_wins"] == 1
+            assert update_2["payload"]["current_game_number"] == 2
+            next_start_1 = player_1.receive_json()
+            next_start_2 = player_2.receive_json()
+            assert next_start_1["type"] == "game_start"
+            assert next_start_1["payload"]["first_turn"] == "player_2"
+            assert next_start_2["payload"]["current_game_number"] == 2
+
+            player_2.send_json({"type": "move", "payload": {"q": 6, "r": 6}})
+            assert player_1.receive_json()["type"] == "move"
+            assert player_2.receive_json()["type"] == "move"
+
+            play_player_1_column_win(player_1, player_2, player_2_already_moved=True)
+            assert player_1.receive_json()["type"] == "game_over"
+            assert player_2.receive_json()["type"] == "game_over"
+            assert player_1.receive_json()["type"] == "series_update"
+            assert player_2.receive_json()["type"] == "series_update"
+            series_over_1 = player_1.receive_json()
+            series_over_2 = player_2.receive_json()
+            assert series_over_1["type"] == "series_over"
+            assert series_over_1["payload"]["winner"] == "player_1"
+            assert series_over_2["payload"]["player_1_wins"] == 2
+
+
+def play_player_1_column_win(player_1, player_2, player_2_already_moved=False):
+    player_1_moves = [(0, r) for r in range(7)]
+    player_2_moves = [(6, r) for r in range(6)]
+    player_2_move_index = 0
+
+    for index, p1_move in enumerate(player_1_moves):
+        player_1.send_json({"type": "move", "payload": {"q": p1_move[0], "r": p1_move[1]}})
+        assert player_1.receive_json()["type"] == "move"
+        assert player_2.receive_json()["type"] == "move"
+
+        if index == len(player_1_moves) - 1:
+            return
+
+        p2_move = player_2_moves[player_2_move_index]
+        player_2_move_index += 1
+        player_2.send_json({"type": "move", "payload": {"q": p2_move[0], "r": p2_move[1]}})
+        assert player_1.receive_json()["type"] == "move"
+        assert player_2.receive_json()["type"] == "move"
 
 
 def test_disconnect_notifies_opponent_and_resets_slot():

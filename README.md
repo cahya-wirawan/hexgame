@@ -8,6 +8,7 @@ The current implementation covers Phases 1-5 from `PLAN.md`:
 
 - Fixed in-memory game slots.
 - Board-size-aware matchmaking.
+- Best-of match series with configurable odd series lengths.
 - WebSocket real-time gameplay.
 - Server-authoritative move validation and turn tracking.
 - Hex win detection.
@@ -123,7 +124,7 @@ Serves the built dashboard.
 
 ### WebSocket
 
-`/ws/matchmake?board_size=11`
+`/ws/matchmake?board_size=11&series_length=3`
 
 Allowed board sizes:
 
@@ -131,7 +132,14 @@ Allowed board sizes:
 7, 9, 11, 13, 19
 ```
 
-The server only matches players who request the same board size.
+Allowed series lengths:
+
+```text
+1, 3, 5, 7
+```
+
+`series_length` defaults to `1`. The server only matches players who request
+the same board size and the same series length.
 
 ## WebSocket Protocol
 
@@ -239,8 +247,13 @@ WebSocket connection.
   "payload": {
     "slot_id": 1,
     "board_size": 11,
+    "series_length": 3,
     "players": ["player_1", "player_2"],
-    "first_turn": "player_1"
+    "first_turn": "player_1",
+    "current_game_number": 1,
+    "player_1_wins": 0,
+    "player_2_wins": 0,
+    "wins_required": 2
   }
 }
 ```
@@ -282,6 +295,40 @@ WebSocket connection.
 }
 ```
 
+`series_update`
+
+Sent after each completed game in a series.
+
+```json
+{
+  "type": "series_update",
+  "payload": {
+    "player_1_wins": 1,
+    "player_2_wins": 0,
+    "current_game_number": 2,
+    "wins_required": 2,
+    "series_length": 3
+  }
+}
+```
+
+`series_over`
+
+Sent when a player reaches the required number of wins.
+
+```json
+{
+  "type": "series_over",
+  "payload": {
+    "winner": "player_1",
+    "player_1_wins": 2,
+    "player_2_wins": 0,
+    "wins_required": 2,
+    "series_length": 3
+  }
+}
+```
+
 Other server messages:
 
 - `pong`
@@ -293,6 +340,11 @@ Other server messages:
 
 - `player_1` is blue and moves first.
 - `player_2` is red.
+- A game is one Hex board.
+- A series is best-of `1`, `3`, `5`, or `7` games between the same players.
+- The series ends as soon as a player reaches `ceil(series_length / 2)` wins.
+- First turn alternates by game number: odd games start with `player_1`, even
+  games start with `player_2`.
 - Coordinates are `(q, r)`.
 - Board access is `board[r][q]`.
 - `player_1` wins by connecting top to bottom.
@@ -336,6 +388,7 @@ Useful options:
 python -m examples.random_client \
   --server ws://127.0.0.1:8000 \
   --board-size 11 \
+  --series-length 3 \
   --seed 42 \
   --move-delay 0.1
 ```
@@ -365,6 +418,7 @@ The current test suite covers:
 
 - Slot assignment and reset behavior.
 - Board-size-aware matchmaking.
+- Series-length-aware matchmaking and best-of scoring.
 - Protocol validation.
 - Move validation and turn order.
 - Hex win detection.

@@ -17,6 +17,8 @@ from .protocol import (
     opponent_disconnected,
     parse_client_message,
     pong,
+    series_over,
+    series_update,
     waiting_for_opponent,
 )
 from .slots import SlotManager
@@ -33,13 +35,15 @@ class WebSocketGameManager:
                 assignment.player_id,
                 assignment.color,
                 assignment.board_size,
+                assignment.series_length,
             )
         )
 
         if assignment.opponent_connected:
+            start_message = await self._game_start_message(assignment.slot_id, assignment.board_size)
             await self._broadcast_connections(
                 [assignment.player_1, assignment.player_2],
-                game_start(assignment.slot_id, assignment.board_size),
+                start_message,
                 assignment.slot_id,
             )
         else:
@@ -110,6 +114,53 @@ class WebSocketGameManager:
                 game_over(result.winner),
                 assignment.slot_id,
             )
+            series_result, failure = await self.slot_manager.record_game_result(
+                assignment.slot_id,
+                result.winner,
+            )
+            if failure is not None or series_result is None:
+                return
+
+            state, series_connections = series_result
+            await self._broadcast_connections(
+                series_connections,
+                series_update(
+                    state["player_1_wins"],
+                    state["player_2_wins"],
+                    state["current_game_number"],
+                    state["wins_required"],
+                    state["series_length"],
+                ),
+                assignment.slot_id,
+            )
+
+            if state["series_winner"] is not None:
+                await self._broadcast_connections(
+                    series_connections,
+                    series_over(
+                        state["series_winner"],
+                        state["player_1_wins"],
+                        state["player_2_wins"],
+                        state["wins_required"],
+                        state["series_length"],
+                    ),
+                    assignment.slot_id,
+                )
+            elif state["next_game_started"]:
+                await self._broadcast_connections(
+                    series_connections,
+                    game_start(
+                        state["slot_id"],
+                        state["board_size"],
+                        state["first_turn"],
+                        state["current_game_number"],
+                        state["series_length"],
+                        state["player_1_wins"],
+                        state["player_2_wins"],
+                        state["wins_required"],
+                    ),
+                    assignment.slot_id,
+                )
 
     async def _handle_chat(self, assignment: SlotAssignment, payload: dict) -> None:
         raw_message = payload.get("message", "")
@@ -155,3 +206,18 @@ class WebSocketGameManager:
             await connection.websocket.send_json(outbound)
         except RuntimeError:
             await self.handle_disconnect(slot_id, connection.player_id)
+
+    async def _game_start_message(self, slot_id: int, board_size: int) -> dict:
+        slot = await self.slot_manager.get_slot(slot_id)
+        if slot is None or slot.series_state is None or slot.game_state is None:
+            return game_start(slot_id, board_size, "player_1", 1, 1, 0, 0, 1)
+        return game_start(
+            slot_id,
+            board_size,
+            slot.game_state.current_turn,
+            slot.series_state.current_game_number,
+            slot.series_state.series_length,
+            slot.series_state.player_1_wins,
+            slot.series_state.player_2_wins,
+            slot.series_state.wins_required,
+        )

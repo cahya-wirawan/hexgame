@@ -13,6 +13,7 @@ The current implementation covers Phases 1-5 from `PLAN.md`:
 - Server-authoritative move validation and turn tracking.
 - Hex win detection.
 - `/overview` monitoring page.
+- Model-driven clients, including a pygame GUI client for visual board output.
 
 Reconnect support, Redis, database persistence, user accounts, ratings, and
 multi-worker deployment are intentionally not implemented yet.
@@ -21,6 +22,7 @@ multi-worker deployment are intentionally not implemented yet.
 
 - Python 3.10+ recommended.
 - Node.js 20+ recommended for the overview frontend.
+- `pygame` is required for `examples/hex_client_gui.py`.
 - Single Uvicorn worker only. Slot and game state are stored in process memory.
 
 Install backend dependencies:
@@ -108,12 +110,18 @@ Example:
     "slot_id": 1,
     "state": "full",
     "board_size": 11,
+    "series_length": 3,
     "player_count": 2,
-    "players": ["player_1", "player_2"],
-    "current_turn": "player_1",
+    "players": [-1, 1],
+    "current_turn": -1,
     "winner": null,
     "move_count": 8,
-    "board": [[null, "player_1"]]
+    "board": [[null, -1]],
+    "wins_required": 2,
+    "current_game_number": 1,
+    "player_1_wins": 0,
+    "player_2_wins": 0,
+    "series_winner": null
   }
 ]
 ```
@@ -219,9 +227,10 @@ WebSocket connection.
   "type": "joined",
   "payload": {
     "slot_id": 1,
-    "player": "player_1",
-    "color": "blue",
+    "player": -1,
+    "color": "red",
     "board_size": 11,
+    "series_length": 3,
     "protocol_version": 1
   }
 }
@@ -249,7 +258,7 @@ WebSocket connection.
     "board_size": 11,
     "series_length": 3,
     "players": ["player_1", "player_2"],
-    "first_turn": "player_1",
+    "first_turn": -1,
     "current_game_number": 1,
     "player_1_wins": 0,
     "player_2_wins": 0,
@@ -264,10 +273,10 @@ WebSocket connection.
 {
   "type": "move",
   "payload": {
-    "player": "player_1",
+    "player": -1,
     "q": 3,
     "r": 5,
-    "next_turn": "player_2"
+    "next_turn": 1
   }
 }
 ```
@@ -289,7 +298,7 @@ WebSocket connection.
 {
   "type": "game_over",
   "payload": {
-    "winner": "player_1",
+    "winner": -1,
     "reason": "connected_sides"
   }
 }
@@ -320,7 +329,7 @@ Sent when a player reaches the required number of wins.
 {
   "type": "series_over",
   "payload": {
-    "winner": "player_1",
+    "winner": -1,
     "player_1_wins": 2,
     "player_2_wins": 0,
     "wins_required": 2,
@@ -336,10 +345,24 @@ Other server messages:
 - `error`
 - `opponent_disconnected`
 
+### Player ID Compatibility
+
+The protocol originally used string IDs (`"player_1"` and `"player_2"`).
+The current model-client branch uses numeric IDs internally:
+
+```text
+-1 = player_1
+ 1 = player_2
+```
+
+The model clients accept both string and numeric IDs when updating their local
+board. If you write a new client, do not hard-code one representation without
+checking `app/config.py`.
+
 ## Gameplay Rules
 
-- `player_1` is blue and moves first.
-- `player_2` is red.
+- The current `app/config.py` maps `PLAYER_1 = -1` and `PLAYER_2 = 1`.
+- `player_1` moves first.
 - A game is one Hex board.
 - A series is best-of `1`, `3`, `5`, or `7` games between the same players.
 - The series ends as soon as a player reaches `ceil(series_length / 2)` wins.
@@ -364,16 +387,18 @@ The server rejects moves when:
 - The target cell is occupied.
 - The payload is malformed.
 
-## Random Client
-
-The reference client plays uniformly random legal moves. It is useful for
-smoke testing matchmaking, gameplay, and win detection.
+## Clients
 
 Start the server first:
 
 ```bash
 python -m uvicorn app.main:app --port 8000
 ```
+
+### Random Client
+
+The reference random client plays uniformly random legal moves. It is useful
+for smoke testing matchmaking, gameplay, and win detection.
 
 Run two clients in separate terminals:
 
@@ -398,6 +423,60 @@ There is also a helper script:
 ```bash
 bash examples/run_pair.sh
 ```
+
+### Model Client
+
+`examples/hex_client.py` loads a model module dynamically. The module must
+export:
+
+```python
+def agent(board, action_set):
+    ...
+```
+
+The model-facing board uses the Hex engine convention:
+
+```text
+0  = empty
+1  = red / model player 2
+-1 = blue / model player 1
+```
+
+The `action_set` passed to the model uses `(row, col)` coordinates. The client
+converts model output back to the server protocol shape `{q, r}`.
+
+Run two model clients:
+
+```bash
+python -m examples.hex_client --model-name model_random --board-size 7 --series-length 1
+python -m examples.hex_client --model-name model_first --board-size 7 --series-length 1
+```
+
+Available example models include:
+
+- `model_random`
+- `model_first`
+
+### Pygame GUI Model Client
+
+`examples/hex_client_gui.py` is the graphical version of the model client. It
+opens a pygame window, draws the Hex board, updates stones as server moves
+arrive, shows score/turn/status text, and keeps the final board visible when
+the series ends.
+
+Run it with:
+
+```bash
+python -m examples.hex_client_gui \
+  --model-name model_random \
+  --server ws://127.0.0.1:8000 \
+  --board-size 7 \
+  --series-length 3 \
+  --seed 42 \
+  --move-delay 0.1
+```
+
+Close the GUI with `Esc`, `Q`, or the window close button.
 
 ## Tests
 
@@ -443,7 +522,12 @@ frontend/
   package.json           Frontend scripts and dependencies
 
 examples/
-  random_client.py       Random-move WebSocket client
+  random_client.py       Simple random WebSocket client
+  hex_client.py          Model-driven WebSocket client
+  hex_client_gui.py      Pygame model client with graphical board output
+  hex_engine.py          Local Hex engine used by ML models
+  model_*.py             Example model agents
+  setup_mcts.py          Optional C++ MCTS extension build script
   run_pair.sh            Launches two random clients
 
 tests/

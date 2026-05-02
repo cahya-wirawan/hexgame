@@ -65,13 +65,13 @@ def check_winner(board: list[list[int | None]], board_size: int, player: int) ->
     stack: list[tuple[int, int]] = []
 
     if player == PLAYER_1:
-        for q in range(board_size):
-            if board[0][q] == player:
-                stack.append((q, 0))
-    else:
         for r in range(board_size):
             if board[r][0] == player:
                 stack.append((0, r))
+    else:
+        for q in range(board_size):
+            if board[0][q] == player:
+                stack.append((q, 0))
 
     while stack:
         q, r = stack.pop()
@@ -79,9 +79,9 @@ def check_winner(board: list[list[int | None]], board_size: int, player: int) ->
             continue
         visited.add((q, r))
 
-        if player == PLAYER_1 and r == board_size - 1:
+        if player == PLAYER_1 and q == board_size - 1:
             return True
-        if player == PLAYER_2 and q == board_size - 1:
+        if player == PLAYER_2 and r == board_size - 1:
             return True
 
         for dq, dr in DIRECTIONS:

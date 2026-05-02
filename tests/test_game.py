@@ -32,19 +32,19 @@ def test_move_validation_and_turn_order():
     assert outside.reason == "Move outside board"
 
 
-def test_player_1_top_to_bottom_win_is_detected():
+def test_player_1_left_to_right_win_is_detected():
     board = [[None for _ in range(3)] for _ in range(3)]
     board[0][0] = PLAYER_1
-    board[1][0] = PLAYER_1
-    board[2][0] = PLAYER_1
+    board[0][1] = PLAYER_1
+    board[0][2] = PLAYER_1
 
     assert check_winner(board, 3, PLAYER_1)
 
 
-def test_player_2_left_to_right_win_is_detected():
+def test_player_2_top_to_bottom_win_is_detected():
     board = [[None for _ in range(3)] for _ in range(3)]
     board[0][0] = PLAYER_2
-    board[0][1] = PLAYER_2
-    board[0][2] = PLAYER_2
+    board[1][0] = PLAYER_2
+    board[2][0] = PLAYER_2
 
     assert check_winner(board, 3, PLAYER_2)

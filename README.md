@@ -350,8 +350,8 @@ Other server messages:
 The protocol uses numeric IDs everywhere a player appears:
 
 ```text
--1 = player_1 = red  = top-to-bottom
- 1 = player_2 = blue = left-to-right
+-1 = player_1 = red  = left-to-right
+ 1 = player_2 = blue = top-to-bottom
 ```
 
 New clients should treat `-1` and `1` as the canonical protocol values. The
@@ -370,8 +370,8 @@ messages, and any extra `player` field in a move payload is ignored.
   even games start with `player_2` (`1`).
 - Coordinates are `(q, r)`.
 - Board access is `board[r][q]`.
-- `player_1` (`-1`, red) wins by connecting top to bottom.
-- `player_2` (`1`, blue) wins by connecting left to right.
+- `player_1` (`-1`, red) wins by connecting left to right.
+- `player_2` (`1`, blue) wins by connecting top to bottom.
 - Neighbors use the axial-like offsets:
 
 ```python
@@ -469,7 +469,8 @@ Available example models include:
 opens a pygame window, draws the Hex board, updates stones as server moves
 arrive, highlights the last move, shows coordinate labels, displays model,
 slot, score, turn, move count, goal sides, and keeps the final board visible
-when the series ends.
+when the series ends. The GUI marks red/player_1 goal sides as left-right and
+blue/player_2 goal sides as top-bottom.
 
 Run it with:
 

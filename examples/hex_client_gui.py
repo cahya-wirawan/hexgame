@@ -163,10 +163,10 @@ class HexBoardViewer:
         top_right = self.hex_centers[(0, size - 1)]
         bottom_left = self.hex_centers[(size - 1, 0)]
         bottom_right = self.hex_centers[(size - 1, size - 1)]
-        pygame.draw.line(self.screen, self.COLORS["edge_red"], top_left, top_right, 16)
-        pygame.draw.line(self.screen, self.COLORS["edge_red"], bottom_left, bottom_right, 16)
-        pygame.draw.line(self.screen, self.COLORS["edge_blue"], top_left, bottom_left, 16)
-        pygame.draw.line(self.screen, self.COLORS["edge_blue"], top_right, bottom_right, 16)
+        pygame.draw.line(self.screen, self.COLORS["edge_blue"], top_left, top_right, 16)
+        pygame.draw.line(self.screen, self.COLORS["edge_blue"], bottom_left, bottom_right, 16)
+        pygame.draw.line(self.screen, self.COLORS["edge_red"], top_left, bottom_left, 16)
+        pygame.draw.line(self.screen, self.COLORS["edge_red"], top_right, bottom_right, 16)
 
     def _draw_board(self, board: list[list[int | None]], *, last_move: tuple[int, int] | None) -> None:
         pygame = self.pygame
@@ -249,8 +249,8 @@ class HexBoardViewer:
 
         self._draw_text("Goal Sides", self.PANEL_LEFT + 18, y, self.small_font, self.COLORS["text"])
         y += 28
-        y = self._draw_goal_row("red", "player_1 connects top-bottom", y)
-        y = self._draw_goal_row("blue", "player_2 connects left-right", y)
+        y = self._draw_goal_row("red", "player_1 connects left-right", y)
+        y = self._draw_goal_row("blue", "player_2 connects top-bottom", y)
         y += 18
         self._draw_text("Esc or Q closes the window", self.PANEL_LEFT + 18, y, self.small_font, self.COLORS["muted"])
 

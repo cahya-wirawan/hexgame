@@ -50,6 +50,7 @@ def print_board(board: list[list[int | None]], title: str = "Board") -> None:
     size = len(board)
     labels = " ".join(f"{q:>2}" for q in range(size))
     print(f"\n{title}")
+    print("Red/player_1 connects left-right; Blue/player_2 connects top-bottom")
     print(f"     {labels}")
     # board = list(map(list, zip(*board)))
     for r, row in enumerate(board):

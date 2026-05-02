@@ -139,8 +139,8 @@ def test_game_over_is_emitted_for_player_1_win():
             player_1.receive_json()
             player_2.receive_json()
 
-            player_1_moves = [(0, r) for r in range(7)]
-            player_2_moves = [(6, r) for r in range(6)]
+            player_1_moves = [(q, 0) for q in range(7)]
+            player_2_moves = [(q, 6) for q in range(6)]
 
             for index, p1_move in enumerate(player_1_moves):
                 player_1.send_json({"type": "move", "payload": {"q": p1_move[0], "r": p1_move[1]}})
@@ -174,7 +174,7 @@ def test_best_of_three_continues_after_first_game_and_then_emits_series_over():
             assert first_start_1["payload"]["first_turn"] == PLAYER_1
             assert first_start_2["payload"]["wins_required"] == 2
 
-            play_player_1_column_win(player_1, player_2)
+            play_player_1_row_win(player_1, player_2)
             assert player_1.receive_json()["type"] == "game_over"
             assert player_2.receive_json()["type"] == "game_over"
             update_1 = player_1.receive_json()
@@ -192,7 +192,7 @@ def test_best_of_three_continues_after_first_game_and_then_emits_series_over():
             assert player_1.receive_json()["type"] == "move"
             assert player_2.receive_json()["type"] == "move"
 
-            play_player_1_column_win(player_1, player_2, player_2_already_moved=True)
+            play_player_1_row_win(player_1, player_2, player_2_already_moved=True)
             assert player_1.receive_json()["type"] == "game_over"
             assert player_2.receive_json()["type"] == "game_over"
             assert player_1.receive_json()["type"] == "series_update"
@@ -204,9 +204,9 @@ def test_best_of_three_continues_after_first_game_and_then_emits_series_over():
             assert series_over_2["payload"]["player_1_wins"] == 2
 
 
-def play_player_1_column_win(player_1, player_2, player_2_already_moved=False):
-    player_1_moves = [(0, r) for r in range(7)]
-    player_2_moves = [(6, r) for r in range(6)]
+def play_player_1_row_win(player_1, player_2, player_2_already_moved=False):
+    player_1_moves = [(q, 0) for q in range(7)]
+    player_2_moves = [(q, 6) for q in range(6)]
     player_2_move_index = 0
 
     for index, p1_move in enumerate(player_1_moves):

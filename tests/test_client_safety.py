@@ -1,10 +1,29 @@
 import pytest
 
-from examples.client_safety import InvalidModelMove, apply_server_move, normalize_model_move
+from examples.client_safety import InvalidModelMove, apply_server_move, model_move_to_payload, normalize_model_move
+
+
+class IndexableInt:
+    def __init__(self, value):
+        self.value = value
+
+    def __index__(self):
+        return self.value
 
 
 def test_normalize_model_move_accepts_legal_row_col_pair():
     assert normalize_model_move([1, 2], [(0, 0), (1, 2)]) == (1, 2)
+
+
+def test_normalize_model_move_accepts_integer_like_coordinates():
+    move = (IndexableInt(1), IndexableInt(2))
+
+    assert normalize_model_move(move, [(1, 2)]) == (1, 2)
+
+
+def test_normalize_model_move_rejects_boolean_coordinates():
+    with pytest.raises(InvalidModelMove, match="coordinate must be an integer"):
+        normalize_model_move((True, 0), [(1, 0)])
 
 
 def test_normalize_model_move_rejects_occupied_or_out_of_set_move():
@@ -15,6 +34,17 @@ def test_normalize_model_move_rejects_occupied_or_out_of_set_move():
 def test_normalize_model_move_rejects_bad_shape():
     with pytest.raises(InvalidModelMove, match="expected a \\(row, col\\) pair"):
         normalize_model_move(3, [(0, 0)])
+
+
+def test_model_move_to_payload_adapts_row_col_to_q_r():
+    assert model_move_to_payload((2, 4), [(2, 4)]) == {"q": 4, "r": 2}
+
+
+def test_model_move_to_payload_rejects_q_r_order_mistake_when_cell_is_not_legal():
+    legal_moves = [(2, 4)]
+
+    with pytest.raises(InvalidModelMove, match="illegal move"):
+        model_move_to_payload((4, 2), legal_moves)
 
 
 def test_apply_server_move_validates_before_mutating_board():
@@ -30,3 +60,23 @@ def test_apply_server_move_rejects_occupied_local_cell():
 
     with pytest.raises(InvalidModelMove, match="occupied"):
         apply_server_move(board, q=0, r=0, player=-1)
+
+    assert board == [[1, 0], [0, 0]]
+
+
+def test_apply_server_move_rejects_invalid_player_without_mutating_board():
+    board = [[0, 0], [0, 0]]
+
+    with pytest.raises(InvalidModelMove, match="invalid player"):
+        apply_server_move(board, q=1, r=1, player=2)
+
+    assert board == [[0, 0], [0, 0]]
+
+
+def test_apply_server_move_rejects_out_of_bounds_without_mutating_board():
+    board = [[0, 0], [0, 0]]
+
+    with pytest.raises(InvalidModelMove, match="outside local board"):
+        apply_server_move(board, q=2, r=0, player=-1)
+
+    assert board == [[0, 0], [0, 0]]

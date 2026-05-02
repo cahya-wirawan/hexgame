@@ -23,6 +23,12 @@ def normalize_model_move(move: Any, legal_moves: Iterable[tuple[int, int]]) -> t
     return normalized
 
 
+def model_move_to_payload(move: Any, legal_moves: Iterable[tuple[int, int]]) -> dict[str, int]:
+    """Convert a model (row, col) move to the server's {q, r} payload."""
+    row, col = normalize_model_move(move, legal_moves)
+    return {"q": col, "r": row}
+
+
 def apply_server_move(board: list[list[int | None]], q: Any, r: Any, player: Any) -> None:
     """Apply a trusted server move defensively, so malformed messages do not corrupt local state."""
     row = _coerce_coordinate(r, "r")

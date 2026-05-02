@@ -11,9 +11,9 @@ import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
 try:
-    from examples.client_safety import InvalidModelMove, apply_server_move, normalize_model_move
+    from examples.client_safety import InvalidModelMove, apply_server_move, model_move_to_payload
 except ModuleNotFoundError:
-    from client_safety import InvalidModelMove, apply_server_move, normalize_model_move
+    from client_safety import InvalidModelMove, apply_server_move, model_move_to_payload
 
 MODEL_TO_COLOR = {
     -1: "red",
@@ -121,13 +121,13 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                         return
                     await asyncio.sleep(move_delay)
                     try:
-                        row, col = normalize_model_move(agent(board, cells), cells)
+                        move_payload = model_move_to_payload(agent(board, cells), cells)
                     except InvalidModelMove as exc:
                         print(f"Model move error: {exc}")
                         print_board(board, "Board at model error")
                         return
                     pending_move = True
-                    await websocket.send(json.dumps({"type": "move", "payload": {"q": col, "r": row}}))
+                    await websocket.send(json.dumps({"type": "move", "payload": move_payload}))
     except (InvalidStatus, InvalidStatusCode) as exc:
         raise SystemExit(
             f"WebSocket connection rejected by {uri}: {exc}\n"

@@ -467,8 +467,9 @@ Available example models include:
 
 `examples/hex_client_gui.py` is the graphical version of the model client. It
 opens a pygame window, draws the Hex board, updates stones as server moves
-arrive, shows score/turn/status text, and keeps the final board visible when
-the series ends.
+arrive, highlights the last move, shows coordinate labels, displays model,
+slot, score, turn, move count, goal sides, and keeps the final board visible
+when the series ends.
 
 Run it with:
 

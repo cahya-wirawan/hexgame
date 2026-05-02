@@ -11,9 +11,9 @@ import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
 try:
-    from examples.client_safety import InvalidModelMove, apply_server_move, normalize_model_move
+    from examples.client_safety import InvalidModelMove, apply_server_move, model_move_to_payload
 except ModuleNotFoundError:
-    from client_safety import InvalidModelMove, apply_server_move, normalize_model_move
+    from client_safety import InvalidModelMove, apply_server_move, model_move_to_payload
 
 MODEL_TO_COLOR = {
     -1: "red",
@@ -38,8 +38,11 @@ class HexBoardViewer:
     WIDTH = 1100
     HEIGHT = 780
     FPS = 60
-    BOARD_TOP = 110
-    BOARD_LEFT = 120
+    BOARD_TOP = 120
+    BOARD_LEFT = 90
+    PANEL_LEFT = 760
+    PANEL_TOP = 72
+    PANEL_WIDTH = 308
 
     COLORS = {
         "background": (246, 248, 251),
@@ -51,6 +54,10 @@ class HexBoardViewer:
         "muted": (71, 85, 105),
         "edge_red": (248, 113, 113),
         "edge_blue": (96, 165, 250),
+        "panel": (255, 255, 255),
+        "panel_border": (203, 213, 225),
+        "highlight": (250, 204, 21),
+        "white": (255, 255, 255),
     }
 
     def __init__(self, board_size: int):
@@ -68,6 +75,7 @@ class HexBoardViewer:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("arial", 24, bold=True)
         self.small_font = pygame.font.SysFont("arial", 18)
+        self.tiny_font = pygame.font.SysFont("arial", 14)
         self.board_size = board_size
         self.hex_radius = min(32, max(16, int(260 / max(1, board_size))))
         self.hex_width = math.sqrt(3) * self.hex_radius
@@ -120,12 +128,32 @@ class HexBoardViewer:
         score: tuple[int, int],
         game_number: int | None,
         series_length: int,
+        model_name: str,
+        slot_id: int | None,
+        move_count: int,
+        last_move: tuple[int, int] | None,
+        last_move_player: int | None,
+        pending_move: bool,
     ) -> None:
         self.pump_events()
         self.screen.fill(self.COLORS["background"])
         self._draw_goal_edges()
-        self._draw_board(board)
-        self._draw_status(status, player_id, current_turn, score, game_number, series_length)
+        self._draw_board(board, last_move=last_move)
+        self._draw_coordinate_labels()
+        self._draw_panel(
+            status=status,
+            player_id=player_id,
+            current_turn=current_turn,
+            score=score,
+            game_number=game_number,
+            series_length=series_length,
+            model_name=model_name,
+            slot_id=slot_id,
+            move_count=move_count,
+            last_move=last_move,
+            last_move_player=last_move_player,
+            pending_move=pending_move,
+        )
         self.pygame.display.flip()
 
     def _draw_goal_edges(self) -> None:
@@ -140,7 +168,7 @@ class HexBoardViewer:
         pygame.draw.line(self.screen, self.COLORS["edge_blue"], top_left, bottom_left, 16)
         pygame.draw.line(self.screen, self.COLORS["edge_blue"], top_right, bottom_right, 16)
 
-    def _draw_board(self, board: list[list[int | None]]) -> None:
+    def _draw_board(self, board: list[list[int | None]], *, last_move: tuple[int, int] | None) -> None:
         pygame = self.pygame
         for row in range(self.board_size):
             for col in range(self.board_size):
@@ -154,30 +182,116 @@ class HexBoardViewer:
                     pygame.draw.circle(self.screen, self.COLORS["red"], (int(x), int(y)), int(self.hex_radius * 0.68))
                 elif value == 1:
                     pygame.draw.circle(self.screen, self.COLORS["blue"], (int(x), int(y)), int(self.hex_radius * 0.68))
+                if last_move == (row, col):
+                    pygame.draw.circle(
+                        self.screen,
+                        self.COLORS["highlight"],
+                        (int(x), int(y)),
+                        int(self.hex_radius * 0.82),
+                        4,
+                    )
 
-    def _draw_status(
+    def _draw_coordinate_labels(self) -> None:
+        for col in range(self.board_size):
+            x, y = self.hex_centers[(0, col)]
+            self._draw_text(str(col), x - 4, y - self.hex_radius - 28, self.tiny_font, self.COLORS["muted"])
+        for row in range(self.board_size):
+            x, y = self.hex_centers[(row, 0)]
+            self._draw_text(str(row), x - self.hex_radius - 34, y - 8, self.tiny_font, self.COLORS["muted"])
+
+    def _draw_panel(
         self,
+        *,
         status: str,
         player_id: int | None,
         current_turn: int | None,
         score: tuple[int, int],
         game_number: int | None,
         series_length: int,
+        model_name: str,
+        slot_id: int | None,
+        move_count: int,
+        last_move: tuple[int, int] | None,
+        last_move_player: int | None,
+        pending_move: bool,
     ) -> None:
-        lines = [
-            "Hex Client",
-            status,
-            f"You: {MODEL_TO_COLOR.get(player_id, 'not joined')} ({MODEL_TO_PLAYER.get(player_id, 'unknown')})",
-            f"Turn: {current_turn if current_turn is not None else 'none'}",
-            f"Score: {score[0]} : {score[1]}",
-            f"Game: {game_number if game_number is not None else '-'} / {series_length}",
-            "Esc or Q: close",
-        ]
-        y = self.HEIGHT - 190
-        for index, line in enumerate(lines):
-            font = self.font if index == 0 else self.small_font
-            color = self.COLORS["text"] if index < 2 else self.COLORS["muted"]
-            self.screen.blit(font.render(line, True, color), (30, y + index * 25))
+        pygame = self.pygame
+        panel_rect = pygame.Rect(self.PANEL_LEFT, self.PANEL_TOP, self.PANEL_WIDTH, 610)
+        pygame.draw.rect(self.screen, self.COLORS["panel"], panel_rect, border_radius=8)
+        pygame.draw.rect(self.screen, self.COLORS["panel_border"], panel_rect, width=1, border_radius=8)
+
+        y = self.PANEL_TOP + 20
+        self._draw_text("Hex Client", self.PANEL_LEFT + 18, y, self.font, self.COLORS["text"])
+        y += 38
+        y = self._draw_status_line("Status", status, y)
+        y = self._draw_status_line("Model", model_name, y)
+        y = self._draw_status_line("Slot", str(slot_id) if slot_id is not None else "-", y)
+        y = self._draw_status_line("Game", f"{game_number if game_number is not None else '-'} / {series_length}", y)
+        y = self._draw_status_line("Score", f"{score[0]} : {score[1]}", y)
+        y = self._draw_status_line("Moves", str(move_count), y)
+        y += 8
+
+        self._draw_text("Players", self.PANEL_LEFT + 18, y, self.small_font, self.COLORS["text"])
+        y += 30
+        y = self._draw_player_row(-1, "player_1", "red", player_id, current_turn, y)
+        y = self._draw_player_row(1, "player_2", "blue", player_id, current_turn, y)
+        y += 10
+
+        last_move_text = "-"
+        if last_move is not None:
+            row, col = last_move
+            last_move_text = f"row {row}, col {col}"
+            if last_move_player is not None:
+                last_move_text += f" by {MODEL_TO_PLAYER[last_move_player]}"
+        y = self._draw_status_line("Last move", last_move_text, y)
+        y = self._draw_status_line("Thinking", "yes" if pending_move else "no", y)
+        y += 12
+
+        self._draw_text("Goal Sides", self.PANEL_LEFT + 18, y, self.small_font, self.COLORS["text"])
+        y += 28
+        y = self._draw_goal_row("red", "player_1 connects top-bottom", y)
+        y = self._draw_goal_row("blue", "player_2 connects left-right", y)
+        y += 18
+        self._draw_text("Esc or Q closes the window", self.PANEL_LEFT + 18, y, self.small_font, self.COLORS["muted"])
+
+    def _draw_player_row(
+        self,
+        player_value: int,
+        player_name: str,
+        color_name: str,
+        player_id: int | None,
+        current_turn: int | None,
+        y: int,
+    ) -> int:
+        x = self.PANEL_LEFT + 18
+        pygame = self.pygame
+        pygame.draw.circle(self.screen, self.COLORS[color_name], (x + 10, y + 10), 9)
+        badges = []
+        if player_id == player_value:
+            badges.append("you")
+        if current_turn == player_value:
+            badges.append("turn")
+        suffix = f" ({', '.join(badges)})" if badges else ""
+        self._draw_text(f"{player_name} {player_value}{suffix}", x + 30, y, self.small_font, self.COLORS["muted"])
+        return y + 28
+
+    def _draw_goal_row(self, color_name: str, label: str, y: int) -> int:
+        pygame = self.pygame
+        x = self.PANEL_LEFT + 18
+        pygame.draw.rect(self.screen, self.COLORS[color_name], pygame.Rect(x, y + 5, 20, 8), border_radius=4)
+        self._draw_text(label, x + 30, y, self.tiny_font, self.COLORS["muted"])
+        return y + 24
+
+    def _draw_status_line(self, label: str, value: str, y: int) -> int:
+        self._draw_text(label, self.PANEL_LEFT + 18, y, self.tiny_font, self.COLORS["muted"])
+        self._draw_text(self._truncate(value, 26), self.PANEL_LEFT + 105, y - 2, self.small_font, self.COLORS["text"])
+        return y + 28
+
+    def _draw_text(self, text: str, x: float, y: float, font, color: tuple[int, int, int]) -> None:
+        self.screen.blit(font.render(text, True, color), (int(x), int(y)))
+
+    def _truncate(self, value: str, max_chars: int) -> str:
+        return value if len(value) <= max_chars else value[: max_chars - 1] + "."
 
 
 async def run(model_name: str, server: str, board_size: int, series_length: int, seed: int | None, move_delay: float) -> None:
@@ -191,6 +305,10 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
     pending_move = False
     score = (0, 0)
     current_game_number: int | None = None
+    slot_id: int | None = None
+    move_count = 0
+    last_move: tuple[int, int] | None = None
+    last_move_player: int | None = None
     status = "Connecting"
     viewer = HexBoardViewer(board_size)
     viewer.draw(
@@ -201,6 +319,12 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
         score=score,
         game_number=current_game_number,
         series_length=series_length,
+        model_name=model_name,
+        slot_id=slot_id,
+        move_count=move_count,
+        last_move=last_move,
+        last_move_player=last_move_player,
+        pending_move=pending_move,
     )
 
     try:
@@ -215,6 +339,7 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
 
                 if message_type == "joined":
                     player_id = payload["player"]
+                    slot_id = payload.get("slot_id")
                     status = f"Joined slot {payload.get('slot_id')}"
                 elif message_type == "waiting_for_opponent":
                     status = "Waiting for opponent"
@@ -224,6 +349,9 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                     score = (payload.get("player_1_wins", score[0]), payload.get("player_2_wins", score[1]))
                     board = [[0 for _ in range(board_size)] for _ in range(board_size)]
                     pending_move = False
+                    move_count = 0
+                    last_move = None
+                    last_move_player = None
                     status = "Game started"
                 elif message_type == "move":
                     q = payload["q"]
@@ -239,11 +367,20 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                             score=score,
                             game_number=current_game_number,
                             series_length=series_length,
+                            model_name=model_name,
+                            slot_id=slot_id,
+                            move_count=move_count,
+                            last_move=last_move,
+                            last_move_player=last_move_player,
+                            pending_move=pending_move,
                         )
                         await viewer.wait_until_closed()
                         return
                     current_turn = payload.get("next_turn")
                     pending_move = False
+                    move_count += 1
+                    last_move = (r, q)
+                    last_move_player = payload["player"]
                     status = f"Move: row={r}, col={q}"
                 elif message_type == "move_rejected":
                     pending_move = False
@@ -266,6 +403,12 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                         score=score,
                         game_number=current_game_number,
                         series_length=series_length,
+                        model_name=model_name,
+                        slot_id=slot_id,
+                        move_count=move_count,
+                        last_move=last_move,
+                        last_move_player=last_move_player,
+                        pending_move=pending_move,
                     )
                     await viewer.wait_until_closed()
                     return
@@ -278,6 +421,12 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                         score=score,
                         game_number=current_game_number,
                         series_length=series_length,
+                        model_name=model_name,
+                        slot_id=slot_id,
+                        move_count=move_count,
+                        last_move=last_move,
+                        last_move_player=last_move_player,
+                        pending_move=pending_move,
                     )
                     await viewer.wait_until_closed()
                     return
@@ -290,6 +439,12 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                         score=score,
                         game_number=current_game_number,
                         series_length=series_length,
+                        model_name=model_name,
+                        slot_id=slot_id,
+                        move_count=move_count,
+                        last_move=last_move,
+                        last_move_player=last_move_player,
+                        pending_move=pending_move,
                     )
                     await viewer.wait_until_closed()
                     return
@@ -302,17 +457,40 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                     score=score,
                     game_number=current_game_number,
                     series_length=series_length,
+                    model_name=model_name,
+                    slot_id=slot_id,
+                    move_count=move_count,
+                    last_move=last_move,
+                    last_move_player=last_move_player,
+                    pending_move=pending_move,
                 )
 
                 if player_id is not None and current_turn == player_id and not pending_move:
                     cells = empty_cells(board)
                     if not cells:
                         return
+                    pending_move = True
+                    status = "Model thinking"
+                    viewer.draw(
+                        board,
+                        status=status,
+                        player_id=player_id,
+                        current_turn=current_turn,
+                        score=score,
+                        game_number=current_game_number,
+                        series_length=series_length,
+                        model_name=model_name,
+                        slot_id=slot_id,
+                        move_count=move_count,
+                        last_move=last_move,
+                        last_move_player=last_move_player,
+                        pending_move=pending_move,
+                    )
                     await asyncio.sleep(move_delay)
                     if not viewer.pump_events():
                         return
                     try:
-                        row, col = normalize_model_move(agent(board, cells), cells)
+                        move_payload = model_move_to_payload(agent(board, cells), cells)
                     except InvalidModelMove as exc:
                         viewer.draw(
                             board,
@@ -322,11 +500,17 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                             score=score,
                             game_number=current_game_number,
                             series_length=series_length,
+                            model_name=model_name,
+                            slot_id=slot_id,
+                            move_count=move_count,
+                            last_move=last_move,
+                            last_move_player=last_move_player,
+                            pending_move=pending_move,
                         )
                         await viewer.wait_until_closed()
                         return
-                    pending_move = True
-                    await websocket.send(json.dumps({"type": "move", "payload": {"q": col, "r": row}}))
+                    status = f"Sent move: row={move_payload['r']}, col={move_payload['q']}"
+                    await websocket.send(json.dumps({"type": "move", "payload": move_payload}))
     except (InvalidStatus, InvalidStatusCode) as exc:
         raise SystemExit(
             f"WebSocket connection rejected by {uri}: {exc}\n"

@@ -17,6 +17,15 @@ SERVER_TO_MODEL = {
     -1: -1,
 }
 
+MODEL_TO_COLOR = {
+    "-1": "red",
+    "1": "blue",
+}
+
+MODEL_TO_PLAYER = {
+    "-1": "player_1",
+    "1": "player_2",
+}
 
 def empty_cells(board: list[list[int | None]]) -> list[tuple[int, int]]:
     return [
@@ -142,11 +151,11 @@ class HexBoardViewer:
                 corners = self._hex_corners(center)
                 pygame.draw.polygon(self.screen, self.COLORS["cell"], corners)
                 pygame.draw.polygon(self.screen, self.COLORS["grid"], corners, 2)
-                value = board[row][col]
+                value = board[col][row]
                 if value == 1:
-                    pygame.draw.circle(self.screen, self.COLORS["red"], (int(x), int(y)), int(self.hex_radius * 0.68))
-                elif value == -1:
                     pygame.draw.circle(self.screen, self.COLORS["blue"], (int(x), int(y)), int(self.hex_radius * 0.68))
+                elif value == -1:
+                    pygame.draw.circle(self.screen, self.COLORS["red"], (int(x), int(y)), int(self.hex_radius * 0.68))
 
     def _draw_status(
         self,
@@ -160,9 +169,9 @@ class HexBoardViewer:
         lines = [
             "Hex Client",
             status,
-            f"You: {player_id if player_id is not None else 'not joined'}",
+            f"You: {MODEL_TO_COLOR.get(str(player_id), 'not joined')} ({MODEL_TO_PLAYER.get(str(player_id), 'unknown')})",
             f"Turn: {current_turn if current_turn is not None else 'none'}",
-            f"Score: player_1 {score[0]} - {score[1]} player_2",
+            f"Score: {score[0]} : {score[1]}",
             f"Game: {game_number if game_number is not None else '-'} / {series_length}",
             "Esc or Q: close",
         ]

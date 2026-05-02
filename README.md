@@ -553,6 +553,13 @@ python -m examples.hex_client_gui \
 
 Close the GUI with `Esc`, `Q`, or the window close button.
 
+To play as a human from the GUI, use `--model-name human`. When it is your
+turn, click an empty Hex cell to send the move:
+
+```bash
+python -m examples.hex_client_gui --model-name human --board-size 7
+```
+
 ## Tests
 
 Run all backend tests:

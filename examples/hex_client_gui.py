@@ -82,6 +82,7 @@ class HexBoardViewer:
         self.hex_vertical_step = 1.5 * self.hex_radius
         self.hex_centers = self._calculate_hex_centers()
         self.running = True
+        self.clicked_cells: list[tuple[int, int]] = []
 
     def _calculate_hex_centers(self) -> dict[tuple[int, int], tuple[float, float]]:
         centers = {}
@@ -109,7 +110,32 @@ class HexBoardViewer:
                 self.running = False
             elif event.type == pygame.KEYDOWN and event.key in {pygame.K_ESCAPE, pygame.K_q}:
                 self.running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                cell = self._mouse_to_cell(event.pos)
+                if cell is not None:
+                    self.clicked_cells.append(cell)
         return self.running
+
+    def consume_clicked_cell(self) -> tuple[int, int] | None:
+        if not self.clicked_cells:
+            return None
+        return self.clicked_cells.pop(0)
+
+    def _mouse_to_cell(self, position: tuple[int, int]) -> tuple[int, int] | None:
+        mouse_x, mouse_y = position
+        closest_cell = None
+        closest_distance = float("inf")
+
+        for cell, center in self.hex_centers.items():
+            x, y = center
+            distance = math.hypot(mouse_x - x, mouse_y - y)
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_cell = cell
+
+        if closest_distance <= self.hex_radius:
+            return closest_cell
+        return None
 
     async def wait_until_closed(self) -> None:
         while self.running:
@@ -307,11 +333,13 @@ async def run(
     move_delay: float,
     replay_log: str,
 ) -> None:
-    model = importlib.import_module(model_name)
-    agent = getattr(model, "agent")
+    human_mode = model_name.lower() in {"human", "manual", "mouse"}
+    model = None if human_mode else importlib.import_module(model_name)
+    agent = None if human_mode else getattr(model, "agent")
+    player_label = "human" if human_mode else model_name
     replay = MatchReplayLog.create(
         replay_log,
-        model_name=model_name,
+        model_name=player_label,
         board_size=board_size,
         series_length=series_length,
     )
@@ -331,13 +359,14 @@ async def run(
     status = "Connecting"
     replay.record(
         "client_start",
-        model_name=model_name,
+        model_name=player_label,
         server=server,
         board_size=board_size,
         series_length=series_length,
         seed=seed,
         move_delay=move_delay,
         gui=True,
+        human_mode=human_mode,
     )
     viewer = HexBoardViewer(board_size)
     viewer.draw(
@@ -348,7 +377,7 @@ async def run(
         score=score,
         game_number=current_game_number,
         series_length=series_length,
-        model_name=model_name,
+        model_name=player_label,
         slot_id=slot_id,
         move_count=move_count,
         last_move=last_move,
@@ -359,7 +388,54 @@ async def run(
 
     try:
         async with websockets.connect(uri) as websocket:
-            async for raw in websocket:
+            async def send_human_click() -> bool:
+                nonlocal pending_move, status
+                if not human_mode or player_id is None or current_turn != player_id or pending_move:
+                    return False
+
+                clicked_cell = viewer.consume_clicked_cell()
+                if clicked_cell is None:
+                    return False
+
+                row, col = clicked_cell
+                if not (0 <= row < board_size and 0 <= col < board_size) or board[row][col] != 0:
+                    status = f"Illegal click: row={row}, col={col}"
+                    replay.record("human_illegal_click", row=row, col=col, board=board)
+                    return False
+
+                move_payload = {"q": col, "r": row}
+                pending_move = True
+                status = f"Sent move: row={row}, col={col}"
+                replay.record("human_move", player=player_id, payload=move_payload, board=board)
+                replay.record("client_send", message_type="move", payload=move_payload)
+                await websocket.send(json.dumps({"type": "move", "payload": move_payload}))
+                return True
+
+            while viewer.running:
+                try:
+                    raw = await asyncio.wait_for(websocket.recv(), timeout=1 / viewer.FPS)
+                except asyncio.TimeoutError:
+                    if not viewer.pump_events():
+                        return
+                    await send_human_click()
+                    viewer.draw(
+                        board,
+                        status=status,
+                        player_id=player_id,
+                        current_turn=current_turn,
+                        score=score,
+                        game_number=current_game_number,
+                        series_length=series_length,
+                        model_name=player_label,
+                        slot_id=slot_id,
+                        move_count=move_count,
+                        last_move=last_move,
+                        last_move_player=last_move_player,
+                        pending_move=pending_move,
+                        replay_path=replay_path,
+                    )
+                    continue
+
                 if not viewer.pump_events():
                     return
 
@@ -401,7 +477,7 @@ async def run(
                             score=score,
                             game_number=current_game_number,
                             series_length=series_length,
-                            model_name=model_name,
+                            model_name=player_label,
                             slot_id=slot_id,
                             move_count=move_count,
                             last_move=last_move,
@@ -442,7 +518,7 @@ async def run(
                         score=score,
                         game_number=current_game_number,
                         series_length=series_length,
-                        model_name=model_name,
+                        model_name=player_label,
                         slot_id=slot_id,
                         move_count=move_count,
                         last_move=last_move,
@@ -461,7 +537,7 @@ async def run(
                         score=score,
                         game_number=current_game_number,
                         series_length=series_length,
-                        model_name=model_name,
+                        model_name=player_label,
                         slot_id=slot_id,
                         move_count=move_count,
                         last_move=last_move,
@@ -480,7 +556,7 @@ async def run(
                         score=score,
                         game_number=current_game_number,
                         series_length=series_length,
-                        model_name=model_name,
+                        model_name=player_label,
                         slot_id=slot_id,
                         move_count=move_count,
                         last_move=last_move,
@@ -499,7 +575,7 @@ async def run(
                     score=score,
                     game_number=current_game_number,
                     series_length=series_length,
-                    model_name=model_name,
+                    model_name=player_label,
                     slot_id=slot_id,
                     move_count=move_count,
                     last_move=last_move,
@@ -508,7 +584,9 @@ async def run(
                     replay_path=replay_path,
                 )
 
-                if player_id is not None and current_turn == player_id and not pending_move:
+                if human_mode:
+                    await send_human_click()
+                elif player_id is not None and current_turn == player_id and not pending_move:
                     cells = empty_cells(board)
                     if not cells:
                         return
@@ -522,7 +600,7 @@ async def run(
                         score=score,
                         game_number=current_game_number,
                         series_length=series_length,
-                        model_name=model_name,
+                        model_name=player_label,
                         slot_id=slot_id,
                         move_count=move_count,
                         last_move=last_move,
@@ -547,7 +625,7 @@ async def run(
                             score=score,
                             game_number=current_game_number,
                             series_length=series_length,
-                            model_name=model_name,
+                            model_name=player_label,
                             slot_id=slot_id,
                             move_count=move_count,
                             last_move=last_move,

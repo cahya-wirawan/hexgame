@@ -10,6 +10,11 @@ from typing import Any
 import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
+try:
+    from examples.client_safety import InvalidModelMove, apply_server_move, normalize_model_move
+except ModuleNotFoundError:
+    from client_safety import InvalidModelMove, apply_server_move, normalize_model_move
+
 MODEL_TO_COLOR = {
     -1: "red",
     1: "blue",
@@ -81,7 +86,12 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                 elif message_type == "move":
                     q = payload["q"]
                     r = payload["r"]
-                    board[r][q] = payload["player"]
+                    try:
+                        apply_server_move(board, q, r, payload["player"])
+                    except InvalidModelMove as exc:
+                        print(f"Client state error: {exc}")
+                        print_board(board, "Local board before rejecting server message")
+                        return
                     current_turn = payload.get("next_turn")
                     pending_move = False
                 elif message_type == "move_rejected":
@@ -110,7 +120,12 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                     if not cells:
                         return
                     await asyncio.sleep(move_delay)
-                    row, col  = agent(board, cells)
+                    try:
+                        row, col = normalize_model_move(agent(board, cells), cells)
+                    except InvalidModelMove as exc:
+                        print(f"Model move error: {exc}")
+                        print_board(board, "Board at model error")
+                        return
                     pending_move = True
                     await websocket.send(json.dumps({"type": "move", "payload": {"q": col, "r": row}}))
     except (InvalidStatus, InvalidStatusCode) as exc:

@@ -445,6 +445,11 @@ protocol convention:
 
 The `action_set` passed to the model uses `(row, col)` coordinates. The client
 converts model output back to the server protocol shape `{q, r}`.
+Before sending a move, the client verifies that the model returned an integer
+`(row, col)` pair that is present in `action_set`. If a model returns an
+occupied cell, an out-of-bounds cell, a scalar, or coordinates in `{q, r}`
+order by mistake, the client stops with a clear model move error instead of
+sending an illegal move to the server.
 
 Run two model clients:
 

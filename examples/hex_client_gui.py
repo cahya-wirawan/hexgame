@@ -10,6 +10,11 @@ from typing import Any
 import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
+try:
+    from examples.client_safety import InvalidModelMove, apply_server_move, normalize_model_move
+except ModuleNotFoundError:
+    from client_safety import InvalidModelMove, apply_server_move, normalize_model_move
+
 MODEL_TO_COLOR = {
     -1: "red",
     1: "blue",
@@ -223,7 +228,20 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                 elif message_type == "move":
                     q = payload["q"]
                     r = payload["r"]
-                    board[r][q] = payload["player"]
+                    try:
+                        apply_server_move(board, q, r, payload["player"])
+                    except InvalidModelMove as exc:
+                        viewer.draw(
+                            board,
+                            status=f"Client state error: {exc}",
+                            player_id=player_id,
+                            current_turn=current_turn,
+                            score=score,
+                            game_number=current_game_number,
+                            series_length=series_length,
+                        )
+                        await viewer.wait_until_closed()
+                        return
                     current_turn = payload.get("next_turn")
                     pending_move = False
                     status = f"Move: row={r}, col={q}"
@@ -293,7 +311,20 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                     await asyncio.sleep(move_delay)
                     if not viewer.pump_events():
                         return
-                    row, col = agent(board, cells)
+                    try:
+                        row, col = normalize_model_move(agent(board, cells), cells)
+                    except InvalidModelMove as exc:
+                        viewer.draw(
+                            board,
+                            status=f"Model move error: {exc}",
+                            player_id=player_id,
+                            current_turn=current_turn,
+                            score=score,
+                            game_number=current_game_number,
+                            series_length=series_length,
+                        )
+                        await viewer.wait_until_closed()
+                        return
                     pending_move = True
                     await websocket.send(json.dumps({"type": "move", "payload": {"q": col, "r": row}}))
     except (InvalidStatus, InvalidStatusCode) as exc:

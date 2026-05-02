@@ -19,10 +19,20 @@ SERVER_TO_MODEL = {
     -1: -1,
 }
 
+MODEL_TO_COLOR = {
+    "-1": "red",
+    "1": "blue",
+}
+
+MODEL_TO_PLAYER = {
+    "-1": "player_1",
+    "1": "player_2",
+}
+
 CELL_SYMBOLS = {
     0: ".",
-    1: "R",
-    -1: "B",
+    1: "B",
+    -1: "R",
     "player_1": "R",
     "player_2": "B",
 }
@@ -47,6 +57,7 @@ def print_board(board: list[list[int | None]], title: str = "Board") -> None:
     labels = " ".join(f"{q:>2}" for q in range(size))
     print(f"\n{title}")
     print(f"     {labels}")
+    board = list(map(list, zip(*board)))
     for r, row in enumerate(board):
         indent = " " * r
         cells = " ".join(f"{CELL_SYMBOLS.get(cell, '?'):>2}" for cell in row)
@@ -90,12 +101,15 @@ async def run(model_name: str, server: str, board_size: int, series_length: int,
                     current_turn = None
                     pending_move = False
                 elif message_type == "series_over":
+                    winner_id = payload.get("winner")
+                    winner = f"{MODEL_TO_PLAYER.get(str(winner_id), winner_id)}"
+                    winner += f" ({MODEL_TO_COLOR.get(str(winner_id), 'unknown color')})"
                     print_board(
                         board,
                         (
                             "Final board "
-                            f"(winner={payload.get('winner')}, "
-                            f"score={payload.get('player_1_wins')}-{payload.get('player_2_wins')})"
+                            f"(winner={winner}, "
+                            f"score={payload.get('player_1_wins')}:{payload.get('player_2_wins')})"
                         ),
                     )
                     return

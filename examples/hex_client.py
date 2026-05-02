@@ -6,6 +6,7 @@ import importlib
 import json
 import random
 from typing import Any
+from urllib.parse import urlencode
 
 import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
@@ -78,7 +79,12 @@ async def run(
         series_length=series_length,
     )
 
-    uri = f"{server.rstrip('/')}/ws/matchmake?board_size={board_size}&series_length={series_length}"
+    query = urlencode({
+        'board_size': board_size,
+        'series_length': series_length,
+        'model_name': model_name,
+    })
+    uri = f"{server.rstrip('/')}/ws/matchmake?{query}"
     player_id: int | None = None
     current_turn: int | None = None
     board: list[list[int | None]] = [[0 for _ in range(board_size)] for _ in range(board_size)]

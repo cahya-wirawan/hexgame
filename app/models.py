@@ -14,6 +14,7 @@ class PlayerConnection:
     player_id: int
     color: str
     reconnect_token: str
+    model_name: str | None = None
     connected: bool = True
     disconnected_at: float | None = None
 
@@ -123,6 +124,11 @@ class GameSlot:
             for connection in (self.player_1, self.player_2)
             if connection is not None and not connection.connected
         ]
+        player_models = {
+            str(connection.player_id): connection.model_name
+            for connection in (self.player_1, self.player_2)
+            if connection is not None and connection.model_name
+        }
         game_state = self.game_state
         series_state = self.series_state
         snapshot: dict[str, Any] = {
@@ -133,6 +139,7 @@ class GameSlot:
             "player_count": self.player_count(),
             "connected_player_count": self.connected_player_count(),
             "players": players,
+            "player_models": player_models,
             "connected_players": connected_players,
             "disconnected_players": disconnected_players,
             "current_turn": game_state.current_turn if game_state else None,

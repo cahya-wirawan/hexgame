@@ -15,6 +15,7 @@ type SlotSnapshot = {
   player_count: number;
   connected_player_count: number;
   players: number[];
+  player_models: Record<string, string>;
   connected_players: number[];
   disconnected_players: number[];
   current_turn: number | null;
@@ -62,6 +63,25 @@ function BoardPreview({ board }: { board: SlotSnapshot["board"] }) {
         ))
       )}
     </div>
+  );
+}
+
+function PlayerList({ slot }: { slot: SlotSnapshot }) {
+  if (!slot.players.length) {
+    return <span>None</span>;
+  }
+
+  return (
+    <span className="grid gap-1">
+      {slot.players.map((player) => (
+        <span key={player}>
+          {player}
+          {slot.player_models?.[String(player)] ? (
+            <span className="text-slate-500"> · {slot.player_models[String(player)]}</span>
+          ) : null}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -141,7 +161,9 @@ export default function App() {
               <dl className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <dt className="text-slate-500">Players</dt>
-                  <dd className="font-medium">{slot.players.length ? slot.players.join(", ") : "None"}</dd>
+                  <dd className="font-medium">
+                    <PlayerList slot={slot} />
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">Occupancy</dt>

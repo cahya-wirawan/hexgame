@@ -115,6 +115,7 @@ Example:
     "player_count": 2,
     "connected_player_count": 2,
     "players": [-1, 1],
+    "player_models": {"-1": "model_alphazero", "1": "human"},
     "connected_players": [-1, 1],
     "disconnected_players": [],
     "current_turn": -1,
@@ -152,6 +153,19 @@ Allowed series lengths:
 
 `series_length` defaults to `1`. The server only matches players who request
 the same board size and the same series length.
+
+Clients may include `model_name` to display a non-secret player label in
+`/slots` and `/overview`:
+
+```text
+/ws/matchmake?board_size=11&series_length=3&model_name=model_alphazero
+```
+
+`/ws/join-slot?slot_id=1`
+
+Joins a specific waiting slot as `player_2`. The joining client inherits the
+board size, series length, wins required, and current score rules already set
+by `player_1` in that slot.
 
 `/ws/reconnect?slot_id=1&token=<reconnect_token>`
 
@@ -558,6 +572,14 @@ turn, click an empty Hex cell to send the move:
 
 ```bash
 python -m examples.hex_client_gui --model-name human --board-size 7
+```
+
+To join a specific waiting slot from the GUI, add `--slot-id`. The GUI ignores
+its local `--board-size` and `--series-length` for gameplay after joining and
+uses the settings reported by the server:
+
+```bash
+python -m examples.hex_client_gui --model-name human --slot-id 3
 ```
 
 ## Tests

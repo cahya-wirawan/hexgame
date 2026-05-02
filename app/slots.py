@@ -19,7 +19,13 @@ class SlotManager:
         }
         self.lock = asyncio.Lock()
 
-    async def join_slot(self, websocket: WebSocket, board_size: int, series_length: int = 1) -> SlotAssignment | None:
+    async def join_slot(
+        self,
+        websocket: WebSocket,
+        board_size: int,
+        series_length: int = 1,
+        model_name: str | None = None,
+    ) -> SlotAssignment | None:
         async with self.lock:
             slot = self._find_waiting_slot(board_size, series_length) or self._find_empty_slot()
             if slot is None:
@@ -34,6 +40,7 @@ class SlotManager:
                     player_id=PLAYER_1,
                     color=PLAYER_COLORS[PLAYER_1],
                     reconnect_token=secrets.token_urlsafe(32),
+                    model_name=model_name,
                 )
                 slot.state = "waiting"
                 return self._assignment(slot, PLAYER_1)
@@ -49,6 +56,7 @@ class SlotManager:
                     player_id=PLAYER_2,
                     color=PLAYER_COLORS[PLAYER_2],
                     reconnect_token=secrets.token_urlsafe(32),
+                    model_name=model_name,
                 )
                 slot.state = "full"
                 first_turn = slot.series_state.first_turn() if slot.series_state else PLAYER_1
@@ -56,6 +64,35 @@ class SlotManager:
                 return self._assignment(slot, PLAYER_2)
 
             return None
+
+    async def join_slot_by_id(
+        self,
+        websocket: WebSocket,
+        slot_id: int,
+        model_name: str | None = None,
+    ) -> tuple[SlotAssignment | None, str | None]:
+        async with self.lock:
+            slot = self.slots.get(slot_id)
+            if slot is None:
+                return None, "Slot does not exist"
+            if slot.state != "waiting" or slot.player_1 is None or slot.board_size is None:
+                return None, "Slot is not waiting for an opponent"
+            if not slot.player_1.connected:
+                return None, "Slot owner is disconnected"
+            if slot.player_2 is not None:
+                return None, "Slot is already full"
+
+            slot.player_2 = PlayerConnection(
+                websocket=websocket,
+                player_id=PLAYER_2,
+                color=PLAYER_COLORS[PLAYER_2],
+                reconnect_token=secrets.token_urlsafe(32),
+                model_name=model_name,
+            )
+            slot.state = "full"
+            first_turn = slot.series_state.first_turn() if slot.series_state else PLAYER_1
+            slot.game_state = HexGameState.create(slot.board_size, first_turn=first_turn)
+            return self._assignment(slot, PLAYER_2), None
 
     async def get_slot(self, slot_id: int) -> GameSlot | None:
         async with self.lock:

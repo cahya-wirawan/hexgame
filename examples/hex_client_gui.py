@@ -6,6 +6,7 @@ import importlib
 import json
 import math
 from typing import Any
+from urllib.parse import urlencode
 
 import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
@@ -329,6 +330,7 @@ async def run(
     server: str,
     board_size: int,
     series_length: int,
+    slot_id: int | None,
     seed: int | None,
     move_delay: float,
     replay_log: str,
@@ -345,14 +347,26 @@ async def run(
     )
     replay_path = str(replay.path) if replay.path is not None else None
 
-    uri = f"{server.rstrip('/')}/ws/matchmake?board_size={board_size}&series_length={series_length}"
+    if slot_id is None:
+        query = urlencode({
+            'board_size': board_size,
+            'series_length': series_length,
+            'model_name': player_label,
+        })
+        uri = f"{server.rstrip('/')}/ws/matchmake?{query}"
+    else:
+        query = urlencode({
+            'slot_id': slot_id,
+            'model_name': player_label,
+        })
+        uri = f"{server.rstrip('/')}/ws/join-slot?{query}"
     player_id: int | None = None
     current_turn: int | None = None
     board: list[list[int | None]] = [[0 for _ in range(board_size)] for _ in range(board_size)]
     pending_move = False
     score = (0, 0)
     current_game_number: int | None = None
-    slot_id: int | None = None
+    assigned_slot_id: int | None = None
     move_count = 0
     last_move: tuple[int, int] | None = None
     last_move_player: int | None = None
@@ -363,6 +377,7 @@ async def run(
         server=server,
         board_size=board_size,
         series_length=series_length,
+        requested_slot_id=slot_id,
         seed=seed,
         move_delay=move_delay,
         gui=True,
@@ -378,7 +393,7 @@ async def run(
         game_number=current_game_number,
         series_length=series_length,
         model_name=player_label,
-        slot_id=slot_id,
+        slot_id=assigned_slot_id,
         move_count=move_count,
         last_move=last_move,
         last_move_player=last_move_player,
@@ -427,7 +442,7 @@ async def run(
                         game_number=current_game_number,
                         series_length=series_length,
                         model_name=player_label,
-                        slot_id=slot_id,
+                        slot_id=assigned_slot_id,
                         move_count=move_count,
                         last_move=last_move,
                         last_move_player=last_move_player,
@@ -446,9 +461,24 @@ async def run(
 
                 if message_type == "joined":
                     player_id = payload["player"]
-                    slot_id = payload.get("slot_id")
-                    replay.record("joined", player=player_id, slot_id=slot_id, color=payload.get("color"))
-                    status = f"Joined slot {payload.get('slot_id')}"
+                    assigned_slot_id = payload.get("slot_id")
+                    server_board_size = payload.get("board_size", board_size)
+                    server_series_length = payload.get("series_length", series_length)
+                    if server_board_size != board_size:
+                        board_size = server_board_size
+                        board = [[0 for _ in range(board_size)] for _ in range(board_size)]
+                        viewer.pygame.quit()
+                        viewer = HexBoardViewer(board_size)
+                    series_length = server_series_length
+                    replay.record(
+                        "joined",
+                        player=player_id,
+                        slot_id=assigned_slot_id,
+                        color=payload.get("color"),
+                        board_size=board_size,
+                        series_length=series_length,
+                    )
+                    status = f"Joined slot {assigned_slot_id}"
                 elif message_type == "waiting_for_opponent":
                     status = "Waiting for opponent"
                 elif message_type == "game_start":
@@ -478,7 +508,7 @@ async def run(
                             game_number=current_game_number,
                             series_length=series_length,
                             model_name=player_label,
-                            slot_id=slot_id,
+                            slot_id=assigned_slot_id,
                             move_count=move_count,
                             last_move=last_move,
                             last_move_player=last_move_player,
@@ -519,7 +549,7 @@ async def run(
                         game_number=current_game_number,
                         series_length=series_length,
                         model_name=player_label,
-                        slot_id=slot_id,
+                        slot_id=assigned_slot_id,
                         move_count=move_count,
                         last_move=last_move,
                         last_move_player=last_move_player,
@@ -538,7 +568,7 @@ async def run(
                         game_number=current_game_number,
                         series_length=series_length,
                         model_name=player_label,
-                        slot_id=slot_id,
+                        slot_id=assigned_slot_id,
                         move_count=move_count,
                         last_move=last_move,
                         last_move_player=last_move_player,
@@ -557,7 +587,7 @@ async def run(
                         game_number=current_game_number,
                         series_length=series_length,
                         model_name=player_label,
-                        slot_id=slot_id,
+                        slot_id=assigned_slot_id,
                         move_count=move_count,
                         last_move=last_move,
                         last_move_player=last_move_player,
@@ -576,7 +606,7 @@ async def run(
                     game_number=current_game_number,
                     series_length=series_length,
                     model_name=player_label,
-                    slot_id=slot_id,
+                    slot_id=assigned_slot_id,
                     move_count=move_count,
                     last_move=last_move,
                     last_move_player=last_move_player,
@@ -601,7 +631,7 @@ async def run(
                         game_number=current_game_number,
                         series_length=series_length,
                         model_name=player_label,
-                        slot_id=slot_id,
+                        slot_id=assigned_slot_id,
                         move_count=move_count,
                         last_move=last_move,
                         last_move_player=last_move_player,
@@ -626,7 +656,7 @@ async def run(
                             game_number=current_game_number,
                             series_length=series_length,
                             model_name=player_label,
-                            slot_id=slot_id,
+                            slot_id=assigned_slot_id,
                             move_count=move_count,
                             last_move=last_move,
                             last_move_player=last_move_player,
@@ -660,6 +690,11 @@ def main() -> None:
     parser.add_argument("--server", default="ws://127.0.0.1:8000")
     parser.add_argument("--board-size", type=int, default=11)
     parser.add_argument("--series-length", type=int, default=1)
+    parser.add_argument(
+        "--slot-id",
+        type=int,
+        help="Join a specific waiting slot and inherit its board size and series length.",
+    )
     parser.add_argument("--seed", type=int)
     parser.add_argument("--move-delay", type=float, default=0.1)
     parser.add_argument("--model-name", type=str, default="model_random")
@@ -675,6 +710,7 @@ def main() -> None:
             args.server,
             args.board_size,
             args.series_length,
+            args.slot_id,
             args.seed,
             args.move_delay,
             args.replay_log,

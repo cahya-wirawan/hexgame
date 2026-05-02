@@ -228,7 +228,7 @@ WebSocket connection.
   "payload": {
     "slot_id": 1,
     "player": -1,
-    "color": "blue",
+    "color": "red",
     "board_size": 11,
     "series_length": 3,
     "protocol_version": 1
@@ -350,8 +350,8 @@ Other server messages:
 The protocol uses numeric IDs everywhere a player appears:
 
 ```text
--1 = player_1 = blue = top-to-bottom
- 1 = player_2 = red  = left-to-right
+-1 = player_1 = red  = top-to-bottom
+ 1 = player_2 = blue = left-to-right
 ```
 
 New clients should treat `-1` and `1` as the canonical protocol values. The
@@ -361,7 +361,7 @@ messages, and any extra `player` field in a move payload is ignored.
 ## Gameplay Rules
 
 - The current `app/config.py` maps `PLAYER_1 = -1` and `PLAYER_2 = 1`.
-- `player_1` (`-1`, blue) moves first.
+- `player_1` (`-1`, red) moves first.
 - A game is one Hex board.
 - A series is best-of `1`, `3`, `5`, `7`, `9`, `11`, `13`, or `15` games
   between the same players.
@@ -370,8 +370,8 @@ messages, and any extra `player` field in a move payload is ignored.
   even games start with `player_2` (`1`).
 - Coordinates are `(q, r)`.
 - Board access is `board[r][q]`.
-- `player_1` (`-1`, blue) wins by connecting top to bottom.
-- `player_2` (`1`, red) wins by connecting left to right.
+- `player_1` (`-1`, red) wins by connecting top to bottom.
+- `player_2` (`1`, blue) wins by connecting left to right.
 - Neighbors use the axial-like offsets:
 
 ```python
@@ -434,12 +434,13 @@ def agent(board, action_set):
     ...
 ```
 
-The model-facing board uses the Hex engine convention:
+The model-facing board used by the WebSocket clients follows the server
+protocol convention:
 
 ```text
 0  = empty
-1  = red / model player 2
--1 = blue / model player 1
+-1 = red / model player 1
+1  = blue / model player 2
 ```
 
 The `action_set` passed to the model uses `(row, col)` coordinates. The client

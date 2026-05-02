@@ -11,8 +11,8 @@ import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
 MODEL_TO_COLOR = {
-    -1: "blue",
-    1: "red",
+    -1: "red",
+    1: "blue",
 }
 
 MODEL_TO_PLAYER = {
@@ -130,10 +130,10 @@ class HexBoardViewer:
         top_right = self.hex_centers[(0, size - 1)]
         bottom_left = self.hex_centers[(size - 1, 0)]
         bottom_right = self.hex_centers[(size - 1, size - 1)]
-        pygame.draw.line(self.screen, self.COLORS["edge_blue"], top_left, top_right, 16)
-        pygame.draw.line(self.screen, self.COLORS["edge_blue"], bottom_left, bottom_right, 16)
-        pygame.draw.line(self.screen, self.COLORS["edge_red"], top_left, bottom_left, 16)
-        pygame.draw.line(self.screen, self.COLORS["edge_red"], top_right, bottom_right, 16)
+        pygame.draw.line(self.screen, self.COLORS["edge_red"], top_left, top_right, 16)
+        pygame.draw.line(self.screen, self.COLORS["edge_red"], bottom_left, bottom_right, 16)
+        pygame.draw.line(self.screen, self.COLORS["edge_blue"], top_left, bottom_left, 16)
+        pygame.draw.line(self.screen, self.COLORS["edge_blue"], top_right, bottom_right, 16)
 
     def _draw_board(self, board: list[list[int | None]]) -> None:
         pygame = self.pygame
@@ -145,9 +145,9 @@ class HexBoardViewer:
                 pygame.draw.polygon(self.screen, self.COLORS["cell"], corners)
                 pygame.draw.polygon(self.screen, self.COLORS["grid"], corners, 2)
                 value = board[row][col]
-                if value == 1:
+                if value == -1:
                     pygame.draw.circle(self.screen, self.COLORS["red"], (int(x), int(y)), int(self.hex_radius * 0.68))
-                elif value == -1:
+                elif value == 1:
                     pygame.draw.circle(self.screen, self.COLORS["blue"], (int(x), int(y)), int(self.hex_radius * 0.68))
 
     def _draw_status(

@@ -44,9 +44,9 @@ function BoardPreview({ board }: { board: SlotSnapshot["board"] }) {
             key={`${q}-${r}`}
             className={
               cell === -1
-                ? "aspect-square rounded-sm bg-blue-600"
+                ? "aspect-square rounded-sm bg-red-600"
                 : cell === 1
-                  ? "aspect-square rounded-sm bg-red-600"
+                  ? "aspect-square rounded-sm bg-blue-600"
                   : "aspect-square rounded-sm bg-slate-200"
             }
             title={`${q}, ${r}`}

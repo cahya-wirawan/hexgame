@@ -11,8 +11,8 @@ import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
 MODEL_TO_COLOR = {
-    -1: "blue",
-    1: "red",
+    -1: "red",
+    1: "blue",
 }
 
 MODEL_TO_PLAYER = {
@@ -22,8 +22,8 @@ MODEL_TO_PLAYER = {
 
 CELL_SYMBOLS = {
     0: ".",
-    1: "R",
-    -1: "B",
+    -1: "R",
+    1: "B",
 }
 
 module_name = "model_random"

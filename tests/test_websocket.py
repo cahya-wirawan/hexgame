@@ -20,13 +20,17 @@ def test_two_clients_with_same_board_size_are_matched():
     client = TestClient(app)
 
     with client.websocket_connect("/ws/matchmake?board_size=11") as player_1:
-        assert player_1.receive_json()["type"] == "joined"
+        joined_1 = player_1.receive_json()
+        assert joined_1["type"] == "joined"
+        assert joined_1["payload"]["player"] == PLAYER_1
+        assert joined_1["payload"]["color"] == "red"
         assert player_1.receive_json()["type"] == "waiting_for_opponent"
 
         with client.websocket_connect("/ws/matchmake?board_size=11") as player_2:
             joined_2 = player_2.receive_json()
             assert joined_2["type"] == "joined"
             assert joined_2["payload"]["player"] == PLAYER_2
+            assert joined_2["payload"]["color"] == "blue"
             start_1 = player_1.receive_json()
             start_2 = player_2.receive_json()
             assert start_1["type"] == "game_start"

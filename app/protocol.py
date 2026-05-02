@@ -4,7 +4,7 @@ from typing import Any
 
 from .config import PLAYER_1, PLAYER_2, PROTOCOL_VERSION
 
-CLIENT_MESSAGE_TYPES = {"hello", "move", "chat", "resign", "ping"}
+CLIENT_MESSAGE_TYPES = {"hello", "move", "chat", "resign", "ping", "keep_slot"}
 
 
 def parse_client_message(message: object) -> tuple[str, dict[str, Any]] | str:
@@ -79,6 +79,21 @@ def reconnected(
 
 def waiting_for_opponent(slot_id: int, board_size: int) -> dict[str, Any]:
     return message("waiting_for_opponent", {"slot_id": slot_id, "board_size": board_size})
+
+
+def slot_kept(slot_id: int, board_size: int, series_length: int, reconnect_token: str) -> dict[str, Any]:
+    return message(
+        "slot_kept",
+        {
+            "slot_id": slot_id,
+            "player": PLAYER_1,
+            "color": "red",
+            "board_size": board_size,
+            "series_length": series_length,
+            "reconnect_token": reconnect_token,
+            "protocol_version": PROTOCOL_VERSION,
+        },
+    )
 
 
 def game_start(
@@ -166,6 +181,10 @@ def opponent_disconnected(reconnect_timeout_seconds: int, reason: str = "waiting
 
 def opponent_reconnected(player_id: int) -> dict[str, Any]:
     return message("opponent_reconnected", {"player": player_id})
+
+
+def opponent_left_slot() -> dict[str, Any]:
+    return message("opponent_left_slot", {"message": "Your opponent kept the slot for another match"})
 
 
 def pong() -> dict[str, Any]:

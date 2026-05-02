@@ -334,6 +334,7 @@ async def run(
     seed: int | None,
     move_delay: float,
     replay_log: str,
+    keep_slot: bool,
 ) -> None:
     human_mode = model_name.lower() in {"human", "manual", "mouse"}
     model = None if human_mode else importlib.import_module(model_name)
@@ -382,6 +383,7 @@ async def run(
         move_delay=move_delay,
         gui=True,
         human_mode=human_mode,
+        keep_slot=keep_slot,
     )
     viewer = HexBoardViewer(board_size)
     viewer.draw(
@@ -480,7 +482,28 @@ async def run(
                     )
                     status = f"Joined slot {assigned_slot_id}"
                 elif message_type == "waiting_for_opponent":
+                    current_turn = None
+                    pending_move = False
                     status = "Waiting for opponent"
+                elif message_type == "slot_kept":
+                    player_id = payload["player"]
+                    assigned_slot_id = payload.get("slot_id", assigned_slot_id)
+                    server_board_size = payload.get("board_size", board_size)
+                    if server_board_size != board_size:
+                        board_size = server_board_size
+                        viewer.pygame.quit()
+                        viewer = HexBoardViewer(board_size)
+                    series_length = payload.get("series_length", series_length)
+                    board = [[0 for _ in range(board_size)] for _ in range(board_size)]
+                    current_turn = None
+                    score = (0, 0)
+                    current_game_number = None
+                    move_count = 0
+                    last_move = None
+                    last_move_player = None
+                    pending_move = False
+                    replay.record("slot_kept", payload=payload)
+                    status = f"Kept slot {assigned_slot_id}"
                 elif message_type == "game_start":
                     current_turn = payload["first_turn"]
                     current_game_number = payload.get("current_game_number")
@@ -540,6 +563,13 @@ async def run(
                 elif message_type == "series_over":
                     score = (payload.get("player_1_wins", score[0]), payload.get("player_2_wins", score[1]))
                     replay.record("series_over", payload=payload, board=board)
+                    if keep_slot:
+                        current_turn = None
+                        pending_move = True
+                        status = "Keeping slot"
+                        replay.record("client_send", message_type="keep_slot", payload={})
+                        await websocket.send(json.dumps({"type": "keep_slot", "payload": {}}))
+                        continue
                     viewer.draw(
                         board,
                         status=f"Series over: {payload.get('winner')} wins",
@@ -573,6 +603,25 @@ async def run(
                         last_move=last_move,
                         last_move_player=last_move_player,
                         pending_move=pending_move,
+                        replay_path=replay_path,
+                    )
+                    await viewer.wait_until_closed()
+                    return
+                elif message_type == "opponent_left_slot":
+                    viewer.draw(
+                        board,
+                        status=payload.get("message", "Opponent left slot"),
+                        player_id=player_id,
+                        current_turn=None,
+                        score=score,
+                        game_number=current_game_number,
+                        series_length=series_length,
+                        model_name=player_label,
+                        slot_id=assigned_slot_id,
+                        move_count=move_count,
+                        last_move=last_move,
+                        last_move_player=last_move_player,
+                        pending_move=False,
                         replay_path=replay_path,
                     )
                     await viewer.wait_until_closed()
@@ -703,6 +752,11 @@ def main() -> None:
         default="auto",
         help="Path for JSONL replay export, 'auto' for examples/replays, or 'off' to disable.",
     )
+    parser.add_argument(
+        "--keep-slot",
+        action="store_true",
+        help="After a completed series, keep this connection in the same slot and wait for another match.",
+    )
     args = parser.parse_args()
     asyncio.run(
         run(
@@ -714,6 +768,7 @@ def main() -> None:
             args.seed,
             args.move_delay,
             args.replay_log,
+            args.keep_slot,
         )
     )
 

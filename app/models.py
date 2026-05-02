@@ -162,6 +162,7 @@ class SlotAssignment:
     color: str
     board_size: int
     series_length: int
+    reconnect_token: str
     opponent_connected: bool
     player_1: PlayerConnection | None = field(repr=False)
     player_2: PlayerConnection | None = field(repr=False)

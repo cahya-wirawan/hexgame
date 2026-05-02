@@ -582,6 +582,14 @@ uses the settings reported by the server:
 python -m examples.hex_client_gui --model-name human --slot-id 3
 ```
 
+To keep the same slot after a completed series and wait for another opponent,
+add `--keep-slot`. The server resets the series score, keeps the player as
+`player_1` in that slot, and moves the slot back to `waiting`:
+
+```bash
+python -m examples.hex_client_gui --model-name human --board-size 7 --keep-slot
+```
+
 ## Tests
 
 Run all backend tests:

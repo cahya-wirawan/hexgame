@@ -17,10 +17,12 @@ from .protocol import (
     move,
     move_rejected,
     opponent_disconnected,
+    opponent_left_slot,
     opponent_reconnected,
     parse_client_message,
     pong,
     reconnected,
+    slot_kept,
     series_over,
     series_update,
     waiting_for_opponent,
@@ -66,7 +68,7 @@ class WebSocketGameManager:
         try:
             await self._receive_loop(websocket, assignment)
         except WebSocketDisconnect:
-            await self.handle_disconnect(assignment.slot_id, assignment.player_id)
+            await self.handle_disconnect(assignment.slot_id, assignment.player_id, assignment.reconnect_token)
 
     async def _send_reconnected(self, websocket: WebSocket, assignment: SlotAssignment) -> None:
         snapshot = await self.slot_manager.snapshot_for_slot(assignment.slot_id)
@@ -106,6 +108,10 @@ class WebSocketGameManager:
             elif message_type == "resign":
                 await self._handle_resign(assignment)
                 return
+            elif message_type == "keep_slot":
+                kept_assignment = await self._handle_keep_slot(websocket, assignment)
+                if kept_assignment is not None:
+                    assignment = kept_assignment
 
     async def _handle_move(self, websocket: WebSocket, assignment: SlotAssignment, payload: dict) -> None:
         coordinates = validate_move_payload(payload)
@@ -206,10 +212,45 @@ class WebSocketGameManager:
         winner = PLAYER_2 if assignment.player_id == PLAYER_1 else PLAYER_1
         connections = await self.slot_manager.connections_for_slot(assignment.slot_id)
         await self._broadcast_connections(connections, game_over(winner, "resignation"), assignment.slot_id)
-        await self.handle_disconnect(assignment.slot_id, assignment.player_id)
+        await self.handle_disconnect(assignment.slot_id, assignment.player_id, assignment.reconnect_token)
 
-    async def handle_disconnect(self, slot_id: int, player_id: int) -> None:
-        remaining, reconnect_token = await self.slot_manager.mark_disconnected(slot_id, player_id)
+    async def _handle_keep_slot(self, websocket: WebSocket, assignment: SlotAssignment) -> SlotAssignment | None:
+        kept, failure = await self.slot_manager.keep_slot_for_next_match(
+            assignment.slot_id,
+            assignment.player_id,
+            assignment.reconnect_token,
+        )
+        if failure is not None or kept is None:
+            await websocket.send_json(error(failure or "Could not keep slot"))
+            return None
+
+        kept_assignment, opponent = kept
+        await websocket.send_json(
+            slot_kept(
+                kept_assignment.slot_id,
+                kept_assignment.board_size,
+                kept_assignment.series_length,
+                kept_assignment.reconnect_token,
+            )
+        )
+        await websocket.send_json(waiting_for_opponent(kept_assignment.slot_id, kept_assignment.board_size))
+
+        if opponent is not None and opponent.connected and opponent.websocket is not None:
+            try:
+                await opponent.websocket.send_json(opponent_left_slot())
+                await opponent.websocket.close()
+            except RuntimeError:
+                pass
+
+        return kept_assignment
+
+    async def handle_disconnect(
+        self,
+        slot_id: int,
+        player_id: int,
+        reconnect_token: str | None = None,
+    ) -> None:
+        remaining, reconnect_token = await self.slot_manager.mark_disconnected(slot_id, player_id, reconnect_token)
         if reconnect_token is None:
             return
         if remaining is not None and remaining.connected:
@@ -251,13 +292,10 @@ class WebSocketGameManager:
         try:
             await connection.websocket.send_json(outbound)
         except RuntimeError:
-            await self.handle_disconnect(slot_id, connection.player_id)
+            await self.handle_disconnect(slot_id, connection.player_id, connection.reconnect_token)
 
     def _reconnect_token(self, assignment: SlotAssignment) -> str:
-        connection = assignment.player_1 if assignment.player_id == PLAYER_1 else assignment.player_2
-        if connection is None:
-            raise RuntimeError("slot assignment missing player connection")
-        return connection.reconnect_token
+        return assignment.reconnect_token
 
     async def _game_start_message(self, slot_id: int, board_size: int) -> dict:
         slot = await self.slot_manager.get_slot(slot_id)

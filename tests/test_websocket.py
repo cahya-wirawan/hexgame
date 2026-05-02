@@ -243,6 +243,45 @@ def test_best_of_three_continues_after_first_game_and_then_emits_series_over():
             assert series_over_2["payload"]["player_1_wins"] == 2
 
 
+def test_player_can_keep_slot_after_series_over_and_wait_for_next_match():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=7&series_length=1&model_name=keeper") as player_1:
+        player_1.receive_json()
+        player_1.receive_json()
+        with client.websocket_connect("/ws/matchmake?board_size=7&series_length=1&model_name=opponent") as player_2:
+            player_2.receive_json()
+            player_1.receive_json()
+            player_2.receive_json()
+
+            play_player_1_row_win(player_1, player_2)
+            assert player_1.receive_json()["type"] == "game_over"
+            assert player_2.receive_json()["type"] == "game_over"
+            assert player_1.receive_json()["type"] == "series_update"
+            assert player_2.receive_json()["type"] == "series_update"
+            assert player_1.receive_json()["type"] == "series_over"
+            assert player_2.receive_json()["type"] == "series_over"
+
+            player_1.send_json({"type": "keep_slot", "payload": {}})
+            kept = player_1.receive_json()
+            waiting = player_1.receive_json()
+            opponent_notice = player_2.receive_json()
+
+            assert kept["type"] == "slot_kept"
+            assert kept["payload"]["player"] == PLAYER_1
+            assert kept["payload"]["series_length"] == 1
+            assert "reconnect_token" in kept["payload"]
+            assert waiting["type"] == "waiting_for_opponent"
+            assert opponent_notice["type"] == "opponent_left_slot"
+
+            slots = client.get("/slots").json()
+            assert slots[0]["state"] == "waiting"
+            assert slots[0]["players"] == [PLAYER_1]
+            assert slots[0]["player_models"] == {str(PLAYER_1): "keeper"}
+            assert slots[0]["player_1_wins"] == 0
+            assert slots[0]["player_2_wins"] == 0
+
+
 def play_player_1_row_win(player_1, player_2, player_2_already_moved=False):
     player_1_moves = [(q, 0) for q in range(7)]
     player_2_moves = [(q, 6) for q in range(6)]

@@ -146,7 +146,51 @@ class SlotManager:
             slot.reset()
             return remaining
 
-    async def mark_disconnected(self, slot_id: int, player_id: int) -> tuple[PlayerConnection | None, str | None]:
+    async def keep_slot_for_next_match(
+        self,
+        slot_id: int,
+        player_id: int,
+        reconnect_token: str,
+    ) -> tuple[tuple[SlotAssignment, PlayerConnection | None] | None, str | None]:
+        async with self.lock:
+            slot = self.slots.get(slot_id)
+            if slot is None or slot.state != "full":
+                return None, "Slot is not in a finished match"
+            if slot.board_size is None or slot.series_length is None or slot.series_state is None:
+                return None, "Slot is not ready for another match"
+            if slot.series_state.series_winner is None:
+                return None, "Series is not over"
+
+            keeper = slot.get_connection(player_id)
+            if keeper is None or not keeper.connected or keeper.websocket is None:
+                return None, "Player is not connected"
+            if not secrets.compare_digest(keeper.reconnect_token, reconnect_token):
+                return None, "Player connection is stale"
+
+            opponent = slot.opponent_connection(player_id)
+            board_size = slot.board_size
+            series_length = slot.series_length
+            slot.player_1 = PlayerConnection(
+                websocket=keeper.websocket,
+                player_id=PLAYER_1,
+                color=PLAYER_COLORS[PLAYER_1],
+                reconnect_token=secrets.token_urlsafe(32),
+                model_name=keeper.model_name,
+            )
+            slot.player_2 = None
+            slot.state = "waiting"
+            slot.game_state = None
+            slot.series_state = MatchSeriesState.create(series_length)
+            slot.board_size = board_size
+            slot.series_length = series_length
+            return (self._assignment(slot, PLAYER_1), opponent), None
+
+    async def mark_disconnected(
+        self,
+        slot_id: int,
+        player_id: int,
+        expected_reconnect_token: str | None = None,
+    ) -> tuple[PlayerConnection | None, str | None]:
         async with self.lock:
             slot = self.slots.get(slot_id)
             if slot is None or slot.state == "empty":
@@ -154,6 +198,11 @@ class SlotManager:
 
             connection = slot.get_connection(player_id)
             if connection is None or not connection.connected:
+                return None, None
+            if expected_reconnect_token is not None and not secrets.compare_digest(
+                connection.reconnect_token,
+                expected_reconnect_token,
+            ):
                 return None, None
 
             connection.connected = False
@@ -286,6 +335,7 @@ class SlotManager:
             color=connection.color,
             board_size=slot.board_size,
             series_length=slot.series_length,
+            reconnect_token=connection.reconnect_token,
             opponent_connected=(
                 slot.player_1 is not None
                 and slot.player_1.connected

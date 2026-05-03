@@ -538,6 +538,13 @@ python -m examples.hex_client --model-name model_random --board-size 7 --series-
 python -m examples.hex_client --model-name model_first --board-size 7 --series-length 1
 ```
 
+To keep the same slot after a completed series and wait for another opponent,
+add `--keep-slot`:
+
+```bash
+python -m examples.hex_client --model-name model_alphazero --board-size 7 --keep-slot
+```
+
 Available example models include:
 
 - `model_random`

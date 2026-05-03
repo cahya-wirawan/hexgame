@@ -69,6 +69,7 @@ async def run(
     seed: int | None,
     move_delay: float,
     replay_log: str,
+    keep_slot: bool,
 ) -> None:
     model = importlib.import_module(model_name)
     agent = getattr(model, "agent")
@@ -97,6 +98,7 @@ async def run(
         series_length=series_length,
         seed=seed,
         move_delay=move_delay,
+        keep_slot=keep_slot,
     )
     if replay.path is not None:
         print(f"Replay log: {replay.path}")
@@ -113,6 +115,19 @@ async def run(
                 if message_type == "joined":
                     player_id = payload["player"]
                     replay.record("joined", player=player_id, slot_id=payload.get("slot_id"), color=payload.get("color"))
+                elif message_type == "waiting_for_opponent":
+                    current_turn = None
+                    pending_move = False
+                elif message_type == "slot_kept":
+                    player_id = payload["player"]
+                    server_board_size = payload.get("board_size", board_size)
+                    if server_board_size != board_size:
+                        board_size = server_board_size
+                    series_length = payload.get("series_length", series_length)
+                    board = [[0 for _ in range(board_size)] for _ in range(board_size)]
+                    current_turn = None
+                    pending_move = False
+                    replay.record("slot_kept", payload=payload)
                 elif message_type == "game_start":
                     current_turn = payload["first_turn"]
                     board = [[0 for _ in range(board_size)] for _ in range(board_size)]
@@ -151,8 +166,13 @@ async def run(
                             f"score={payload.get('player_1_wins')}:{payload.get('player_2_wins')})"
                         ),
                     )
+                    if keep_slot:
+                        pending_move = True
+                        replay.record("client_send", message_type="keep_slot", payload={})
+                        await websocket.send(json.dumps({"type": "keep_slot", "payload": {}}))
+                        continue
                     return
-                elif message_type in {"opponent_disconnected", "error"}:
+                elif message_type in {"opponent_disconnected", "opponent_left_slot", "error"}:
                     return
 
                 if player_id is not None and current_turn == player_id and not pending_move:
@@ -202,6 +222,11 @@ def main() -> None:
         default="auto",
         help="Path for JSONL replay export, 'auto' for examples/replays, or 'off' to disable.",
     )
+    parser.add_argument(
+        "--keep-slot",
+        action="store_true",
+        help="After a completed series, keep this connection in the same slot and wait for another match.",
+    )
     args = parser.parse_args()
     asyncio.run(
         run(
@@ -212,6 +237,7 @@ def main() -> None:
             args.seed,
             args.move_delay,
             args.replay_log,
+            args.keep_slot,
         )
     )
 

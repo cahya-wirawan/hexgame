@@ -1615,16 +1615,18 @@ Players can recover from temporary network drops.
 
 ### Phase 7: Persistence and scaling
 
+Status: implemented for Redis-backed active match state.
+
 Replace in-memory storage with Redis or another shared store.
 
 Use Redis for:
 
 ```text
-- active slots
-- game state
-- player sessions
-- reconnect tokens
-- pub/sub between server workers
+- active slots: implemented through RedisSlotManager
+- game state: implemented through serialized HexGameState
+- player sessions: implemented through serialized PlayerConnection metadata
+- reconnect tokens: implemented and persisted privately
+- pub/sub between server workers: not implemented yet; WebSocket connections remain worker-local
 ```
 
 Use a database for:
@@ -1635,6 +1637,9 @@ Use a database for:
 - ratings
 - match history
 ```
+
+Database-backed completed match history is not part of the current Phase 7
+implementation.
 
 Important:
 

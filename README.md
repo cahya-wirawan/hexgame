@@ -4,7 +4,7 @@ FastAPI-based Hex game server with WebSocket matchmaking, authoritative game
 state, win detection, a random-move test client, and a Vite/Tailwind/shadcn-ui
 overview dashboard.
 
-The current implementation covers Phases 1-6 from `PLAN.md`:
+The current implementation covers Phases 1-7 from `PLAN.md`:
 
 - Fixed in-memory game slots.
 - Board-size-aware matchmaking.
@@ -15,16 +15,18 @@ The current implementation covers Phases 1-6 from `PLAN.md`:
 - `/overview` monitoring page.
 - Model-driven clients, including a pygame GUI client for visual board output.
 - Reconnect tokens and `/ws/reconnect` support for temporary network drops.
+- Optional Redis-backed slot, game, session, and reconnect-token state.
 
-Redis, database persistence, user accounts, ratings, and multi-worker
-deployment are intentionally not implemented yet.
+Database persistence, user accounts, ratings, and completed match history are
+intentionally not implemented yet.
 
 ## Requirements
 
 - Python 3.10+ recommended.
 - Node.js 20+ recommended for the overview frontend.
 - `pygame` is required for `examples/hex_client_gui.py`.
-- Single Uvicorn worker only. Slot and game state are stored in process memory.
+- Redis is optional. The default backend is still in-process memory for local
+  development.
 
 Install backend dependencies:
 
@@ -56,6 +58,31 @@ Then open:
 If WebSocket clients receive HTTP 404 on `/ws/matchmake`, restart Uvicorn after
 installing `requirements.txt`. Uvicorn must start with WebSocket support
 available.
+
+## Redis State Backend
+
+By default, state is stored in memory:
+
+```bash
+python -m uvicorn app.main:app --port 8000
+```
+
+To persist active slot state in Redis and share slot/game/session/reconnect
+state between server processes, start Redis and run:
+
+```bash
+HEX_STATE_BACKEND=redis \
+HEX_REDIS_URL=redis://127.0.0.1:6379/0 \
+python -m uvicorn app.main:app --port 8000
+```
+
+Redis stores active slots, board state, series score, public model names,
+connection status, and reconnect tokens. Raw WebSocket objects are never stored
+in Redis; after a server restart, persisted players are marked disconnected and
+can return through `/ws/reconnect` using their reconnect token.
+
+Use `HEX_REDIS_KEY_PREFIX` to isolate environments that share the same Redis
+database.
 
 ## Frontend Overview
 
@@ -632,6 +659,7 @@ app/
   models.py              GameSlot, PlayerConnection, SlotAssignment, HexGameState
   protocol.py            Message parsing and message factories
   slots.py               SlotManager and slot lifecycle
+  redis_slots.py         Optional Redis-backed SlotManager
   game.py                Move validation and win detection
   websocket_manager.py   WebSocket receive loop and gameplay handling
   static/overview/       Built Vite dashboard
@@ -655,13 +683,15 @@ tests/
 
 ## Operational Notes
 
-- Run with one Uvicorn worker only. Multiple workers each get separate memory,
-  so matchmaking and game state will split incorrectly.
+- The default `memory` backend is single-process only.
+- Use `HEX_STATE_BACKEND=redis` before running multiple Uvicorn workers. Redis
+  stores shared slot/game/session state, while WebSocket connections remain
+  attached to the worker that accepted them.
 - `/overview` is an operational/debug dashboard. Protect or disable it before
   exposing this service beyond a trusted local network.
-- On any player disconnect, the current implementation notifies the opponent,
-  closes the opponent connection, and resets the slot.
-- Reconnect support is not implemented yet.
+- On disconnect, the slot is held for the reconnect timeout. Clients using
+  `--keep-slot` can keep a slot after a finished series or after an opponent
+  disconnects.
 
 ## Troubleshooting
 
@@ -690,5 +720,6 @@ available, or another app is listening on port 8000.
 
 ### Slot state looks stale
 
-Restart the server. State is in-memory and intentionally resets on process
-restart.
+With the memory backend, restart the server. With Redis, inspect or clear keys
+under `HEX_REDIS_KEY_PREFIX` if you intentionally want to reset persisted slot
+state.

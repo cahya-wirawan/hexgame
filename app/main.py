@@ -7,7 +7,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import ALLOWED_BOARD_SIZES, ALLOWED_SERIES_LENGTHS, MAX_SLOTS
+from .config import ALLOWED_BOARD_SIZES, ALLOWED_SERIES_LENGTHS, MAX_SLOTS, REDIS_URL, STATE_BACKEND
 from .protocol import error
 from .slots import SlotManager
 from .websocket_manager import WebSocketGameManager
@@ -17,11 +17,37 @@ OVERVIEW_DIR = BASE_DIR / "static" / "overview"
 OVERVIEW_INDEX = OVERVIEW_DIR / "index.html"
 
 app = FastAPI(title="Hex Game Server")
-slot_manager = SlotManager(max_slots=MAX_SLOTS)
+
+
+def create_slot_manager():
+    if STATE_BACKEND == "redis":
+        from .redis_slots import RedisSlotManager
+
+        return RedisSlotManager(max_slots=MAX_SLOTS, redis_url=REDIS_URL)
+    if STATE_BACKEND != "memory":
+        raise RuntimeError(f"Unsupported HEX_STATE_BACKEND={STATE_BACKEND!r}")
+    return SlotManager(max_slots=MAX_SLOTS)
+
+
+slot_manager = create_slot_manager()
 websocket_game_manager = WebSocketGameManager(slot_manager)
 
 if (OVERVIEW_DIR / "assets").exists():
     app.mount("/overview/assets", StaticFiles(directory=OVERVIEW_DIR / "assets"), name="overview-assets")
+
+
+@app.on_event("startup")
+async def startup():
+    initialize = getattr(slot_manager, "initialize", None)
+    if initialize is not None:
+        await initialize()
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    close = getattr(slot_manager, "close", None)
+    if close is not None:
+        await close()
 
 
 @app.get("/health")

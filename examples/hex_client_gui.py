@@ -589,6 +589,13 @@ async def run(
                     await viewer.wait_until_closed()
                     return
                 elif message_type == "opponent_disconnected":
+                    if keep_slot:
+                        current_turn = None
+                        pending_move = True
+                        status = "Keeping slot after opponent disconnect"
+                        replay.record("client_send", message_type="keep_slot", payload={"reason": "opponent_disconnected"})
+                        await websocket.send(json.dumps({"type": "keep_slot", "payload": {}}))
+                        continue
                     viewer.draw(
                         board,
                         status="Opponent disconnected",

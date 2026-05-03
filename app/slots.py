@@ -158,8 +158,6 @@ class SlotManager:
                 return None, "Slot is not in a finished match"
             if slot.board_size is None or slot.series_length is None or slot.series_state is None:
                 return None, "Slot is not ready for another match"
-            if slot.series_state.series_winner is None:
-                return None, "Series is not over"
 
             keeper = slot.get_connection(player_id)
             if keeper is None or not keeper.connected or keeper.websocket is None:
@@ -168,6 +166,11 @@ class SlotManager:
                 return None, "Player connection is stale"
 
             opponent = slot.opponent_connection(player_id)
+            series_finished = slot.series_state.series_winner is not None
+            opponent_disconnected = opponent is not None and not opponent.connected
+            if not series_finished and not opponent_disconnected:
+                return None, "Series is not over and opponent is still connected"
+
             board_size = slot.board_size
             series_length = slot.series_length
             slot.player_1 = PlayerConnection(

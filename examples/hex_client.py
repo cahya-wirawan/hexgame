@@ -172,7 +172,15 @@ async def run(
                         await websocket.send(json.dumps({"type": "keep_slot", "payload": {}}))
                         continue
                     return
-                elif message_type in {"opponent_disconnected", "opponent_left_slot", "error"}:
+                elif message_type == "opponent_disconnected":
+                    if keep_slot:
+                        current_turn = None
+                        pending_move = True
+                        replay.record("client_send", message_type="keep_slot", payload={"reason": "opponent_disconnected"})
+                        await websocket.send(json.dumps({"type": "keep_slot", "payload": {}}))
+                        continue
+                    return
+                elif message_type in {"opponent_left_slot", "error"}:
                     return
 
                 if player_id is not None and current_turn == player_id and not pending_move:

@@ -282,6 +282,34 @@ def test_player_can_keep_slot_after_series_over_and_wait_for_next_match():
             assert slots[0]["player_2_wins"] == 0
 
 
+def test_player_can_keep_slot_after_opponent_disconnects_mid_match():
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/matchmake?board_size=7&series_length=3&model_name=keeper") as player_1:
+        player_1.receive_json()
+        player_1.receive_json()
+        with client.websocket_connect("/ws/matchmake?board_size=7&series_length=3&model_name=opponent") as player_2:
+            player_2.receive_json()
+            player_1.receive_json()
+            player_2.receive_json()
+
+        disconnected = player_1.receive_json()
+        assert disconnected["type"] == "opponent_disconnected"
+
+        player_1.send_json({"type": "keep_slot", "payload": {}})
+        kept = player_1.receive_json()
+        waiting = player_1.receive_json()
+
+        assert kept["type"] == "slot_kept"
+        assert kept["payload"]["series_length"] == 3
+        assert waiting["type"] == "waiting_for_opponent"
+
+        slots = client.get("/slots").json()
+        assert slots[0]["state"] == "waiting"
+        assert slots[0]["players"] == [PLAYER_1]
+        assert slots[0]["player_models"] == {str(PLAYER_1): "keeper"}
+
+
 def play_player_1_row_win(player_1, player_2, player_2_already_moved=False):
     player_1_moves = [(q, 0) for q in range(7)]
     player_2_moves = [(q, 6) for q in range(6)]

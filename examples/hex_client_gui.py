@@ -572,7 +572,7 @@ async def run(
                         continue
                     viewer.draw(
                         board,
-                        status=f"Series over: {payload.get('winner')} wins",
+                        status=f"Series over: {MODEL_TO_PLAYER[payload.get('winner')]} wins",
                         player_id=player_id,
                         current_turn=None,
                         score=score,

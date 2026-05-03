@@ -61,6 +61,32 @@ If WebSocket clients receive HTTP 404 on `/ws/matchmake`, restart Uvicorn after
 installing `requirements.txt`. Uvicorn must start with WebSocket support
 available.
 
+## Docker Compose
+
+Build and run the server with Redis and PostgreSQL:
+
+```bash
+docker compose up --build
+```
+
+Compose starts:
+
+- `app`: FastAPI server on `http://127.0.0.1:8000`
+- `redis`: active slot/game/session/reconnect-token state
+- `postgres`: completed-series history through SQLAlchemy ORM
+
+Stop the stack:
+
+```bash
+docker compose down
+```
+
+Remove persisted Redis/PostgreSQL data:
+
+```bash
+docker compose down -v
+```
+
 ## Redis State Backend
 
 By default, state is stored in memory:

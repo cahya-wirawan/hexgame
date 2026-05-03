@@ -66,6 +66,7 @@ async def run(
     server: str,
     board_size: int,
     series_length: int,
+    slot_id: int | None,
     seed: int | None,
     move_delay: float,
     replay_log: str,
@@ -80,12 +81,19 @@ async def run(
         series_length=series_length,
     )
 
-    query = urlencode({
-        'board_size': board_size,
-        'series_length': series_length,
-        'model_name': model_name,
-    })
-    uri = f"{server.rstrip('/')}/ws/matchmake?{query}"
+    if slot_id is None:
+        query = urlencode({
+            "board_size": board_size,
+            "series_length": series_length,
+            "model_name": model_name,
+        })
+        uri = f"{server.rstrip('/')}/ws/matchmake?{query}"
+    else:
+        query = urlencode({
+            "slot_id": slot_id,
+            "model_name": model_name,
+        })
+        uri = f"{server.rstrip('/')}/ws/join-slot?{query}"
     player_id: int | None = None
     current_turn: int | None = None
     board: list[list[int | None]] = [[0 for _ in range(board_size)] for _ in range(board_size)]
@@ -96,6 +104,7 @@ async def run(
         server=server,
         board_size=board_size,
         series_length=series_length,
+        requested_slot_id=slot_id,
         seed=seed,
         move_delay=move_delay,
         keep_slot=keep_slot,
@@ -114,7 +123,19 @@ async def run(
 
                 if message_type == "joined":
                     player_id = payload["player"]
-                    replay.record("joined", player=player_id, slot_id=payload.get("slot_id"), color=payload.get("color"))
+                    server_board_size = payload.get("board_size", board_size)
+                    if server_board_size != board_size:
+                        board_size = server_board_size
+                        board = [[0 for _ in range(board_size)] for _ in range(board_size)]
+                    series_length = payload.get("series_length", series_length)
+                    replay.record(
+                        "joined",
+                        player=player_id,
+                        slot_id=payload.get("slot_id"),
+                        color=payload.get("color"),
+                        board_size=board_size,
+                        series_length=series_length,
+                    )
                 elif message_type == "waiting_for_opponent":
                     current_turn = None
                     pending_move = False
@@ -222,6 +243,11 @@ def main() -> None:
     parser.add_argument("--server", default="ws://127.0.0.1:8000")
     parser.add_argument("--board-size", type=int, default=11)
     parser.add_argument("--series-length", type=int, default=1)
+    parser.add_argument(
+        "--slot-id",
+        type=int,
+        help="Join a specific waiting slot and inherit its board size and series length.",
+    )
     parser.add_argument("--seed", type=int)
     parser.add_argument("--move-delay", type=float, default=0.1)
     parser.add_argument("--model-name", type=str, default="model_random")
@@ -242,6 +268,7 @@ def main() -> None:
             args.server,
             args.board_size,
             args.series_length,
+            args.slot_id,
             args.seed,
             args.move_delay,
             args.replay_log,

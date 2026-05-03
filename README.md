@@ -618,6 +618,13 @@ add `--keep-slot`:
 python -m examples.hex_client --model-name model_alphazero --board-size 7 --keep-slot
 ```
 
+To join a specific waiting slot, add `--slot-id`. The client inherits the slot's
+board size and series length from the server:
+
+```bash
+python -m examples.hex_client --model-name model_random --slot-id 3
+```
+
 Available example models include:
 
 - `model_random`

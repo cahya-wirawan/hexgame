@@ -1615,7 +1615,7 @@ Players can recover from temporary network drops.
 
 ### Phase 7: Persistence and scaling
 
-Status: implemented for Redis-backed active match state.
+Status: implemented for Redis-backed active match state and PostgreSQL/ORM completed-series history.
 
 Replace in-memory storage with Redis or another shared store.
 
@@ -1632,14 +1632,13 @@ Use Redis for:
 Use a database for:
 
 ```text
-- completed games
+- completed games: implemented as completed_series rows
 - users
 - ratings
-- match history
+- match history: implemented for completed series records
 ```
 
-Database-backed completed match history is not part of the current Phase 7
-implementation.
+Users and ratings are not part of the current Phase 7 implementation.
 
 Important:
 

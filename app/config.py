@@ -9,6 +9,8 @@ STATE_BACKEND = os.getenv("HEX_STATE_BACKEND", "memory").strip().lower()
 REDIS_URL = os.getenv("HEX_REDIS_URL", "redis://127.0.0.1:6379/0")
 REDIS_KEY_PREFIX = os.getenv("HEX_REDIS_KEY_PREFIX", "hexgame")
 REDIS_LOCK_TIMEOUT_SECONDS = float(os.getenv("HEX_REDIS_LOCK_TIMEOUT_SECONDS", "5"))
+DATABASE_URL = os.getenv("HEX_DATABASE_URL")
+DATABASE_AUTO_CREATE = os.getenv("HEX_DATABASE_AUTO_CREATE", "1").strip().lower() not in {"0", "false", "no"}
 
 PLAYER_1 = -1
 PLAYER_2 = 1

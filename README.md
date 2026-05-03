@@ -16,9 +16,9 @@ The current implementation covers Phases 1-7 from `PLAN.md`:
 - Model-driven clients, including a pygame GUI client for visual board output.
 - Reconnect tokens and `/ws/reconnect` support for temporary network drops.
 - Optional Redis-backed slot, game, session, and reconnect-token state.
+- Optional PostgreSQL/SQLAlchemy completed-series history.
 
-Database persistence, user accounts, ratings, and completed match history are
-intentionally not implemented yet.
+User accounts and ratings are intentionally not implemented yet.
 
 ## Requirements
 
@@ -27,6 +27,8 @@ intentionally not implemented yet.
 - `pygame` is required for `examples/hex_client_gui.py`.
 - Redis is optional. The default backend is still in-process memory for local
   development.
+- PostgreSQL is optional. Completed-series history is disabled unless
+  `HEX_DATABASE_URL` is set.
 
 Install backend dependencies:
 
@@ -83,6 +85,24 @@ can return through `/ws/reconnect` using their reconnect token.
 
 Use `HEX_REDIS_KEY_PREFIX` to isolate environments that share the same Redis
 database.
+
+## Database History
+
+Completed series can be written through SQLAlchemy ORM to PostgreSQL. Set
+`HEX_DATABASE_URL` before starting the server:
+
+```bash
+HEX_DATABASE_URL=postgresql+psycopg://hex:hex@127.0.0.1:5432/hexgame \
+python -m uvicorn app.main:app --port 8000
+```
+
+By default, `HEX_DATABASE_AUTO_CREATE=1` creates the `completed_series` table on
+startup. Set `HEX_DATABASE_AUTO_CREATE=0` if migrations or external schema
+management should own table creation.
+
+The completed-series record stores slot id, board size, series length, winner,
+score, public model names, final board, and the final public slot snapshot. It
+does not store reconnect tokens or WebSocket objects.
 
 ## Frontend Overview
 
@@ -660,6 +680,7 @@ app/
   protocol.py            Message parsing and message factories
   slots.py               SlotManager and slot lifecycle
   redis_slots.py         Optional Redis-backed SlotManager
+  database.py            SQLAlchemy ORM models and completed-series repository
   game.py                Move validation and win detection
   websocket_manager.py   WebSocket receive loop and gameplay handling
   static/overview/       Built Vite dashboard

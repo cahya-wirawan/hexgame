@@ -7,7 +7,15 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import ALLOWED_BOARD_SIZES, ALLOWED_SERIES_LENGTHS, MAX_SLOTS, REDIS_URL, STATE_BACKEND
+from .config import (
+    ALLOWED_BOARD_SIZES,
+    ALLOWED_SERIES_LENGTHS,
+    DATABASE_AUTO_CREATE,
+    DATABASE_URL,
+    MAX_SLOTS,
+    REDIS_URL,
+    STATE_BACKEND,
+)
 from .protocol import error
 from .slots import SlotManager
 from .websocket_manager import WebSocketGameManager
@@ -30,7 +38,18 @@ def create_slot_manager():
 
 
 slot_manager = create_slot_manager()
-websocket_game_manager = WebSocketGameManager(slot_manager)
+
+
+def create_match_repository():
+    if not DATABASE_URL:
+        return None
+    from .database import DatabaseMatchRepository
+
+    return DatabaseMatchRepository(DATABASE_URL, auto_create=DATABASE_AUTO_CREATE)
+
+
+match_repository = create_match_repository()
+websocket_game_manager = WebSocketGameManager(slot_manager, match_repository=match_repository)
 
 if (OVERVIEW_DIR / "assets").exists():
     app.mount("/overview/assets", StaticFiles(directory=OVERVIEW_DIR / "assets"), name="overview-assets")
@@ -41,6 +60,8 @@ async def startup():
     initialize = getattr(slot_manager, "initialize", None)
     if initialize is not None:
         await initialize()
+    if match_repository is not None:
+        await match_repository.initialize()
 
 
 @app.on_event("shutdown")
@@ -48,6 +69,8 @@ async def shutdown():
     close = getattr(slot_manager, "close", None)
     if close is not None:
         await close()
+    if match_repository is not None:
+        await match_repository.close()
 
 
 @app.get("/health")

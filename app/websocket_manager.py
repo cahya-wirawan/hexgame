@@ -31,8 +31,9 @@ from .slots import SlotManager
 
 
 class WebSocketGameManager:
-    def __init__(self, slot_manager: SlotManager):
+    def __init__(self, slot_manager: SlotManager, match_repository=None):
         self.slot_manager = slot_manager
+        self.match_repository = match_repository
 
     async def start(self, websocket: WebSocket, assignment: SlotAssignment, is_reconnect: bool = False) -> None:
         if is_reconnect:
@@ -168,6 +169,7 @@ class WebSocketGameManager:
             )
 
             if state["series_winner"] is not None:
+                await self._record_completed_series(assignment.slot_id)
                 await self._broadcast_connections(
                     series_connections,
                     series_over(
@@ -243,6 +245,17 @@ class WebSocketGameManager:
                 pass
 
         return kept_assignment
+
+    async def _record_completed_series(self, slot_id: int) -> None:
+        if self.match_repository is None:
+            return
+        snapshot = await self.slot_manager.snapshot_for_slot(slot_id)
+        if snapshot is None:
+            return
+        try:
+            await self.match_repository.record_completed_series(snapshot)
+        except Exception as exc:
+            print(f"Failed to record completed series: {exc}")
 
     async def handle_disconnect(
         self,

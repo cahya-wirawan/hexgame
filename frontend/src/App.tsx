@@ -373,15 +373,16 @@ function DocsPage() {
           <span className="docs-icon">
             <Terminal className="h-5 w-5" />
           </span>
-          <h2>1. Install and run locally</h2>
-          <p>Install Python and frontend dependencies, then start FastAPI from the repository root.</p>
+          <h2>1. Use the hosted server</h2>
+          <p>The provided clients default to <strong>wss://hexgame.codingdojo.ai</strong>, so you can connect models to the hosted arena without running the server locally. Install the client dependencies, add or choose a model, then start a client.</p>
           <pre>
-            <code>{`python -m pip install -r requirements.txt
-cd frontend && npm install && npm run build
-cd ..
-python -m uvicorn app.main:app --port 8000`}</code>
+            <code>{`git clone https://github.com/cahya-wirawan/hex-game-server.git
+cd hex-game-server
+python -m pip install -r requirements.txt
+python -m examples.hex_client --model-name model_random --board-size 7
+python -m examples.hex_client_gui --model-name human --board-size 7`}</code>
           </pre>
-          <p>Open the landing page at <strong>/</strong>, slot dashboard at <strong>/overview</strong>, and health check at <strong>/health</strong>.</p>
+          <p>Open the hosted dashboard at <strong>https://hexgame.codingdojo.ai/overview</strong> to watch slots and match state.</p>
         </article>
 
         <article className="docs-card">
@@ -389,11 +390,11 @@ python -m uvicorn app.main:app --port 8000`}</code>
             <Swords className="h-5 w-5" />
           </span>
           <h2>2. Start matches</h2>
-          <p>Use either matchmaking or a specific waiting slot. Board sizes and series lengths are validated by the server.</p>
+          <p>Use either matchmaking or a specific waiting slot. Board sizes and series lengths are validated by the server. The <strong>--server</strong> argument is optional for the hosted server because it is already the default.</p>
           <pre>
             <code>{`python -m examples.hex_client --board-size 7 --series-length 3 --model-name model_dqn
 python -m examples.hex_client_gui --model-name human --slot-id 1
-python -m examples.random_client --board-size 7 --seed 1`}</code>
+python -m examples.hex_client --model-name model_random --server wss://hexgame.codingdojo.ai`}</code>
           </pre>
           <p>Use <strong>--keep-slot</strong> when the first player should stay in the slot and wait for the next opponent after a series ends.</p>
         </article>
@@ -450,10 +451,13 @@ python -m examples.hex_client --model-name model_my_agent --slot-id 1`}</code>
           <span className="docs-icon">
             <Database className="h-5 w-5" />
           </span>
-          <h2>6. Optional services</h2>
-          <p>Use memory for local development. Use Redis for shared active slot/session state and PostgreSQL for completed-series history.</p>
+          <h2>6. Run your own server</h2>
+          <p>Local server installation is optional. Start FastAPI locally, then point clients at <strong>ws://localhost:8000</strong> with <strong>--server</strong>. Use Redis for shared active slot/session state and PostgreSQL for completed-series history when needed.</p>
           <pre>
-            <code>{`HEX_STATE_BACKEND=redis
+            <code>{`python -m uvicorn app.main:app --port 8000
+python -m examples.hex_client --model-name model_my_agent --server ws://localhost:8000
+
+HEX_STATE_BACKEND=redis
 HEX_REDIS_URL=redis://localhost:6379/0
 HEX_DATABASE_URL=postgresql+asyncpg://hexgame:hexgame@localhost:5432/hexgame
 docker compose up --build`}</code>

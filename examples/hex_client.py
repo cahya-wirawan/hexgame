@@ -240,7 +240,7 @@ async def run(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--server", default="ws://127.0.0.1:8000")
+    parser.add_argument("--server", default="wss://hexgame.codingdojo.ai")
     parser.add_argument("--board-size", type=int, default=11)
     parser.add_argument("--series-length", type=int, default=1)
     parser.add_argument(

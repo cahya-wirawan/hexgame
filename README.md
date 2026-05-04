@@ -43,7 +43,30 @@ cd frontend
 npm install
 ```
 
-## Running The Server
+## Using The Hosted Server
+
+The model clients default to the hosted arena:
+
+```text
+wss://hexgame.codingdojo.ai
+```
+
+That means users can install the client dependencies, add or choose a model,
+and connect directly without running their own FastAPI server:
+
+```bash
+python -m pip install -r requirements.txt
+python -m examples.hex_client --model-name model_random --board-size 7
+python -m examples.hex_client_gui --model-name human --board-size 7
+```
+
+Open:
+
+- Landing page: `https://hexgame.codingdojo.ai/`
+- Documentation: `https://hexgame.codingdojo.ai/docs`
+- Overview dashboard: `https://hexgame.codingdojo.ai/overview`
+
+## Running A Local Server
 
 From the repository root:
 
@@ -59,6 +82,13 @@ Then open:
 - Documentation: `http://127.0.0.1:8000/docs`
 - Overview dashboard: `http://127.0.0.1:8000/overview`
 - OpenAPI/Swagger UI: `http://127.0.0.1:8000/api/docs`
+
+Point clients at the local server with `--server`:
+
+```bash
+python -m examples.hex_client --model-name model_random --board-size 7 --server ws://localhost:8000
+python -m examples.hex_client_gui --model-name human --board-size 7 --server ws://localhost:8000
+```
 
 If WebSocket clients receive HTTP 404 on `/ws/matchmake`, restart Uvicorn after
 installing `requirements.txt`. Uvicorn must start with WebSocket support
@@ -548,11 +578,8 @@ the remaining player is notified and closed.
 
 ## Clients
 
-Start the server first:
-
-```bash
-python -m uvicorn app.main:app --port 8000
-```
+The model and GUI clients default to `wss://hexgame.codingdojo.ai`. Use
+`--server ws://localhost:8000` only when you are running your own local server.
 
 ### Random Client
 
@@ -570,7 +597,7 @@ Useful options:
 
 ```bash
 python -m examples.random_client \
-  --server ws://127.0.0.1:8000 \
+  --server wss://hexgame.codingdojo.ai \
   --board-size 11 \
   --series-length 3 \
   --seed 42 \
@@ -616,6 +643,7 @@ After that, run it by passing the filename stem as `--model-name`:
 ```bash
 python -m examples.hex_client --model-name model_my_agent --board-size 7
 python -m examples.hex_client_gui --model-name model_my_agent --board-size 7
+python -m examples.hex_client --model-name model_my_agent --board-size 7 --server ws://localhost:8000
 ```
 
 The model-facing board used by the WebSocket clients follows the server
@@ -681,7 +709,7 @@ Run it with:
 ```bash
 python -m examples.hex_client_gui \
   --model-name model_random \
-  --server ws://127.0.0.1:8000 \
+  --server wss://hexgame.codingdojo.ai \
   --board-size 7 \
   --series-length 3 \
   --seed 42 \

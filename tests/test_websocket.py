@@ -4,7 +4,7 @@ from app.config import MAX_SLOTS, PLAYER_1, PLAYER_2
 from app.main import app
 
 
-def test_health_slots_landing_and_overview():
+def test_health_slots_landing_docs_and_overview():
     client = TestClient(app)
 
     assert client.get("/health").json() == {"status": "ok"}
@@ -17,6 +17,13 @@ def test_health_slots_landing_and_overview():
     response = client.get("/overview")
     assert response.status_code == 200
     assert "Hex Game Server" in response.text
+    docs_response = client.get("/docs")
+    assert docs_response.status_code == 200
+    assert "Hex Game Server" in docs_response.text
+    assert "swagger-ui" not in docs_response.text
+    api_docs_response = client.get("/api/docs")
+    assert api_docs_response.status_code == 200
+    assert "swagger-ui" in api_docs_response.text
 
 
 def test_two_clients_with_same_board_size_are_matched_and_model_names_are_public():

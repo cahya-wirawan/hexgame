@@ -24,7 +24,12 @@ BASE_DIR = Path(__file__).resolve().parent
 OVERVIEW_DIR = BASE_DIR / "static" / "overview"
 OVERVIEW_INDEX = OVERVIEW_DIR / "index.html"
 
-app = FastAPI(title="Hex Game Server")
+app = FastAPI(
+    title="Hex Game Server",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
 
 
 def create_slot_manager():
@@ -99,6 +104,11 @@ def landing_page():
 
 @app.get("/overview")
 def overview():
+    return frontend_index()
+
+
+@app.get("/docs")
+def docs():
     return frontend_index()
 
 

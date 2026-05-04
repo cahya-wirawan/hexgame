@@ -1,4 +1,4 @@
-import { Activity, Database, GitBranch, RefreshCw, Swords, Terminal } from "lucide-react";
+import { Activity, BookOpen, Code2, Database, GitBranch, RefreshCw, Swords, Terminal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "./components/ui/badge";
@@ -132,6 +132,7 @@ function LandingPage({ totals }: { totals: Record<SlotState, number> }) {
           <div className="nav-links">
             <a href="#architecture">Architecture</a>
             <a href="/overview">Slots</a>
+            <a href="/docs">Docs</a>
             <a href="#quickstart">Run</a>
           </div>
         </nav>
@@ -153,6 +154,10 @@ function LandingPage({ totals }: { totals: Record<SlotState, number> }) {
             <a className="secondary-link" href="#quickstart">
               <Terminal className="h-4 w-4" />
               Start locally
+            </a>
+            <a className="secondary-link" href="/docs">
+              <BookOpen className="h-4 w-4" />
+              Read docs
             </a>
           </div>
         </div>
@@ -336,6 +341,129 @@ function OverviewPage({
   );
 }
 
+function DocsPage() {
+  return (
+    <main id="top" className="docs-shell">
+      <nav className="docs-nav">
+        <a className="brand-mark overview-brand" href="/" aria-label="Go to Hex Game Server landing page">
+          <span className="brand-glyph">H</span>
+          <span>Hex Game Server</span>
+        </a>
+        <div className="nav-links">
+          <a href="/overview">Slots</a>
+          <a href="#run">Run</a>
+          <a href="#model">Add a model</a>
+          <a href="#protocol">Protocol</a>
+        </div>
+      </nav>
+
+      <section className="docs-hero">
+        <p className="eyebrow">Project documentation</p>
+        <h1>Run games, connect clients, and add ML models.</h1>
+        <p>
+          Hex Game Server is a FastAPI WebSocket arena. The backend owns slot assignment,
+          player identity, legal move validation, win detection, reconnect support, and
+          best-of series scoring. ML clients only need to read state and return legal
+          board coordinates.
+        </p>
+      </section>
+
+      <section className="docs-grid" aria-label="Documentation sections">
+        <article className="docs-card" id="run">
+          <span className="docs-icon">
+            <Terminal className="h-5 w-5" />
+          </span>
+          <h2>1. Install and run locally</h2>
+          <p>Install Python and frontend dependencies, then start FastAPI from the repository root.</p>
+          <pre>
+            <code>{`python -m pip install -r requirements.txt
+cd frontend && npm install && npm run build
+cd ..
+python -m uvicorn app.main:app --port 8000`}</code>
+          </pre>
+          <p>Open the landing page at <strong>/</strong>, slot dashboard at <strong>/overview</strong>, and health check at <strong>/health</strong>.</p>
+        </article>
+
+        <article className="docs-card">
+          <span className="docs-icon">
+            <Swords className="h-5 w-5" />
+          </span>
+          <h2>2. Start matches</h2>
+          <p>Use either matchmaking or a specific waiting slot. Board sizes and series lengths are validated by the server.</p>
+          <pre>
+            <code>{`python -m examples.hex_client --board-size 7 --series-length 3 --model-name model_dqn
+python -m examples.hex_client_gui --model-name human --slot-id 1
+python -m examples.random_client --board-size 7 --seed 1`}</code>
+          </pre>
+          <p>Use <strong>--keep-slot</strong> when the first player should stay in the slot and wait for the next opponent after a series ends.</p>
+        </article>
+
+        <article className="docs-card" id="model">
+          <span className="docs-icon">
+            <Code2 className="h-5 w-5" />
+          </span>
+          <h2>3. Add a new ML model</h2>
+          <p>The simplest workflow is to copy <strong>examples/model_random.py</strong> to a new file such as <strong>examples/model_my_agent.py</strong>, then replace the logic inside <strong>agent</strong>. Return one legal move from the provided <strong>action_set</strong>.</p>
+          <pre>
+            <code>{`cp examples/model_random.py examples/model_my_agent.py
+
+# examples/model_my_agent.py
+from random import choice
+
+def agent(board, action_set):
+    # board contains 0, -1, and 1
+    # action_set contains legal (row, col) moves
+    return choice(list(action_set))`}</code>
+          </pre>
+          <p>The client adapter expects numeric players: <strong>-1</strong> for red/player_1 and <strong>1</strong> for blue/player_2. The model returns <strong>(row, col)</strong>; the client converts it to the server <strong>{"{q, r}"}</strong> payload.</p>
+        </article>
+
+        <article className="docs-card">
+          <span className="docs-icon">
+            <Activity className="h-5 w-5" />
+          </span>
+          <h2>4. Wire the model into a client</h2>
+          <p>Run the new module by passing its filename stem to either provided client. The clients dynamically import <strong>examples/model_my_agent.py</strong> when you use <strong>--model-name model_my_agent</strong>.</p>
+          <pre>
+            <code>{`python -m examples.hex_client --model-name model_my_agent --board-size 7
+python -m examples.hex_client_gui --model-name model_my_agent --board-size 7
+python -m examples.hex_client --model-name model_my_agent --slot-id 1`}</code>
+          </pre>
+          <p>For a quick smoke test, run your new model against <strong>model_random</strong> or the GUI human client and watch <strong>/overview</strong>. If the model returns a move that is not in <strong>action_set</strong>, the client rejects it before sending anything illegal to the server.</p>
+        </article>
+
+        <article className="docs-card" id="protocol">
+          <span className="docs-icon">
+            <GitBranch className="h-5 w-5" />
+          </span>
+          <h2>5. Protocol essentials</h2>
+          <ul>
+            <li>Join matchmaking with <strong>/ws/matchmake?board_size=7&amp;series_length=3&amp;model_name=name</strong>.</li>
+            <li>Join a waiting slot with <strong>/ws/join-slot?slot_id=1&amp;model_name=name</strong>.</li>
+            <li>Send moves as <strong>{"{ type: 'move', payload: { q, r } }"}</strong>.</li>
+            <li>Player goals are red/player_1 left-to-right and blue/player_2 top-to-bottom.</li>
+            <li>Rejected moves return <strong>move_rejected</strong>; accepted moves are broadcast to both players.</li>
+          </ul>
+        </article>
+
+        <article className="docs-card">
+          <span className="docs-icon">
+            <Database className="h-5 w-5" />
+          </span>
+          <h2>6. Optional services</h2>
+          <p>Use memory for local development. Use Redis for shared active slot/session state and PostgreSQL for completed-series history.</p>
+          <pre>
+            <code>{`HEX_STATE_BACKEND=redis
+HEX_REDIS_URL=redis://localhost:6379/0
+HEX_DATABASE_URL=postgresql+asyncpg://hexgame:hexgame@localhost:5432/hexgame
+docker compose up --build`}</code>
+          </pre>
+        </article>
+      </section>
+    </main>
+  );
+}
+
 function PlayerList({ slot }: { slot: SlotSnapshot }) {
   if (!slot.players.length) {
     return <span>None</span>;
@@ -395,7 +523,13 @@ export default function App() {
     );
   }, [slots]);
 
-  const isOverviewPage = window.location.pathname.replace(/\/$/, "") === "/overview";
+  const currentPath = window.location.pathname.replace(/\/$/, "") || "/";
+  const isOverviewPage = currentPath === "/overview";
+  const isDocsPage = currentPath === "/docs";
+
+  if (isDocsPage) {
+    return <DocsPage />;
+  }
 
   if (!isOverviewPage) {
     return (

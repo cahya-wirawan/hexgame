@@ -12,7 +12,7 @@ The current implementation covers Phases 1-7 from `PLAN.md`:
 - WebSocket real-time gameplay.
 - Server-authoritative move validation and turn tracking.
 - Hex win detection.
-- `/` project landing page and `/overview` monitoring page.
+- `/` project landing page, `/docs` usage guide, and `/overview` monitoring page.
 - Model-driven clients, including a pygame GUI client for visual board output.
 - Reconnect tokens and `/ws/reconnect` support for temporary network drops.
 - Optional Redis-backed slot, game, session, and reconnect-token state.
@@ -56,7 +56,9 @@ Then open:
 - Health: `http://127.0.0.1:8000/health`
 - Slot state JSON: `http://127.0.0.1:8000/slots`
 - Landing page: `http://127.0.0.1:8000/`
+- Documentation: `http://127.0.0.1:8000/docs`
 - Overview dashboard: `http://127.0.0.1:8000/overview`
+- OpenAPI/Swagger UI: `http://127.0.0.1:8000/api/docs`
 
 If WebSocket clients receive HTTP 404 on `/ws/matchmake`, restart Uvicorn after
 installing `requirements.txt`. Uvicorn must start with WebSocket support
@@ -158,7 +160,7 @@ npm run build
 ```
 
 The production build writes to `app/static/overview/`. FastAPI serves the
-landing page at `/`, the dashboard at `/overview`, and assets from
+landing page at `/`, the documentation page at `/docs`, the dashboard at `/overview`, and assets from
 `/overview/assets/...`.
 
 ## API
@@ -209,6 +211,10 @@ Example:
 `GET /`
 
 Serves the built landing page.
+
+`GET /docs`
+
+Serves the built project documentation page.
 
 `GET /overview`
 
@@ -587,6 +593,31 @@ def agent(board, action_set):
     ...
 ```
 
+The simplest way to add a model is to copy the random model and replace the
+logic inside `agent`:
+
+```bash
+cp examples/model_random.py examples/model_my_agent.py
+```
+
+```python
+# examples/model_my_agent.py
+from random import choice
+
+
+def agent(board, action_set):
+    # board contains 0, -1, and 1
+    # action_set contains legal (row, col) moves
+    return choice(list(action_set))
+```
+
+After that, run it by passing the filename stem as `--model-name`:
+
+```bash
+python -m examples.hex_client --model-name model_my_agent --board-size 7
+python -m examples.hex_client_gui --model-name model_my_agent --board-size 7
+```
+
 The model-facing board used by the WebSocket clients follows the server
 protocol convention:
 
@@ -755,7 +786,7 @@ tests/
 
 ## Troubleshooting
 
-### `/` or `/overview` is blank
+### `/`, `/docs`, or `/overview` is blank
 
 Rebuild the frontend:
 

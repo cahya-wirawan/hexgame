@@ -2,7 +2,7 @@
 
 FastAPI-based Hex game server with WebSocket matchmaking, authoritative game
 state, win detection, a random-move test client, and a Vite/Tailwind/shadcn-ui
-overview dashboard.
+frontend with a landing page plus an operational overview dashboard.
 
 The current implementation covers Phases 1-7 from `PLAN.md`:
 
@@ -12,7 +12,7 @@ The current implementation covers Phases 1-7 from `PLAN.md`:
 - WebSocket real-time gameplay.
 - Server-authoritative move validation and turn tracking.
 - Hex win detection.
-- `/overview` monitoring page.
+- `/` project landing page and `/overview` monitoring page.
 - Model-driven clients, including a pygame GUI client for visual board output.
 - Reconnect tokens and `/ws/reconnect` support for temporary network drops.
 - Optional Redis-backed slot, game, session, and reconnect-token state.
@@ -55,6 +55,7 @@ Then open:
 
 - Health: `http://127.0.0.1:8000/health`
 - Slot state JSON: `http://127.0.0.1:8000/slots`
+- Landing page: `http://127.0.0.1:8000/`
 - Overview dashboard: `http://127.0.0.1:8000/overview`
 
 If WebSocket clients receive HTTP 404 on `/ws/matchmake`, restart Uvicorn after
@@ -130,9 +131,9 @@ The completed-series record stores slot id, board size, series length, winner,
 score, public model names, final board, and the final public slot snapshot. It
 does not store reconnect tokens or WebSocket objects.
 
-## Frontend Overview
+## Frontend
 
-The dashboard lives in `frontend/` and is built with:
+The landing page and overview dashboard live in `frontend/` and are built with:
 
 - Vite
 - React
@@ -156,8 +157,9 @@ cd frontend
 npm run build
 ```
 
-The production build writes to `app/static/overview/`. FastAPI serves that
-build at `/overview` and serves assets from `/overview/assets/...`.
+The production build writes to `app/static/overview/`. FastAPI serves the
+landing page at `/`, the dashboard at `/overview`, and assets from
+`/overview/assets/...`.
 
 ## API
 
@@ -203,6 +205,10 @@ Example:
   }
 ]
 ```
+
+`GET /`
+
+Serves the built landing page.
 
 `GET /overview`
 
@@ -749,7 +755,7 @@ tests/
 
 ## Troubleshooting
 
-### `/overview` is blank
+### `/` or `/overview` is blank
 
 Rebuild the frontend:
 

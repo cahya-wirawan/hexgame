@@ -83,14 +83,23 @@ async def get_slots():
     return await slot_manager.snapshot()
 
 
-@app.get("/overview")
-def overview():
+def frontend_index():
     if OVERVIEW_INDEX.exists():
         return HTMLResponse(OVERVIEW_INDEX.read_text(encoding="utf-8"))
     return HTMLResponse(
-        "<!doctype html><title>Hex Overview</title><h1>Hex Overview</h1>"
+        "<!doctype html><title>Hex Game Server</title><h1>Hex Game Server</h1>"
         "<p>Build the frontend to generate app/static/overview/index.html.</p>"
     )
+
+
+@app.get("/")
+def landing_page():
+    return frontend_index()
+
+
+@app.get("/overview")
+def overview():
+    return frontend_index()
 
 
 def public_client_name(raw_name: Optional[str]) -> Optional[str]:

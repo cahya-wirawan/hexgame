@@ -47,17 +47,24 @@ class RedisSlotManager(SlotManager):
         board_size: int,
         series_length: int = 1,
         model_name: str | None = None,
+        username: str | None = None,
     ):
         async with self._redis_lock():
             await self._hydrate_from_redis()
-            assignment = await super().join_slot(websocket, board_size, series_length, model_name)
+            assignment = await super().join_slot(websocket, board_size, series_length, model_name, username)
             await self._persist_to_redis()
             return assignment
 
-    async def join_slot_by_id(self, websocket: WebSocket, slot_id: int, model_name: str | None = None):
+    async def join_slot_by_id(
+        self,
+        websocket: WebSocket,
+        slot_id: int,
+        model_name: str | None = None,
+        username: str | None = None,
+    ):
         async with self._redis_lock():
             await self._hydrate_from_redis()
-            result = await super().join_slot_by_id(websocket, slot_id, model_name)
+            result = await super().join_slot_by_id(websocket, slot_id, model_name, username)
             await self._persist_to_redis()
             return result
 
@@ -202,6 +209,7 @@ class RedisSlotManager(SlotManager):
             "color": connection.color,
             "reconnect_token": connection.reconnect_token,
             "model_name": connection.model_name,
+            "username": connection.username,
             "connected": connection.connected,
             "disconnected_at": connection.disconnected_at,
         }
@@ -228,6 +236,7 @@ class RedisSlotManager(SlotManager):
             color=data["color"],
             reconnect_token=data["reconnect_token"],
             model_name=data.get("model_name"),
+            username=data.get("username"),
             connected=False if mark_connections_disconnected else data.get("connected", False),
             disconnected_at=data.get("disconnected_at"),
         )

@@ -18,15 +18,17 @@ def redis_manager_without_connection(max_slots=1):
 def test_redis_slot_serialization_preserves_private_match_state_without_websockets():
     async def scenario():
         manager = redis_manager_without_connection()
-        await SlotManager.join_slot(manager, object(), 7, series_length=3, model_name="model_a")
-        await SlotManager.join_slot(manager, object(), 7, series_length=3, model_name="model_b")
+        await SlotManager.join_slot(manager, object(), 7, series_length=3, model_name="model_a", username="alice")
+        await SlotManager.join_slot(manager, object(), 7, series_length=3, model_name="model_b", username="bob")
         await SlotManager.apply_authoritative_move(manager, 1, PLAYER_1, 0, 0)
 
         serialized = manager._slot_to_dict(manager.slots[1])
 
         assert serialized["player_1"]["reconnect_token"]
         assert serialized["player_1"]["model_name"] == "model_a"
+        assert serialized["player_1"]["username"] == "alice"
         assert serialized["player_2"]["model_name"] == "model_b"
+        assert serialized["player_2"]["username"] == "bob"
         assert "websocket" not in serialized["player_1"]
         assert serialized["game_state"]["board"][0][0] == PLAYER_1
         assert serialized["game_state"]["current_turn"] == PLAYER_2
@@ -48,6 +50,7 @@ def test_redis_slot_hydration_marks_connections_disconnected_after_restart():
                 "color": "red",
                 "reconnect_token": "token-1",
                 "model_name": "model_a",
+                "username": "alice",
                 "connected": True,
                 "disconnected_at": None,
             },
@@ -56,6 +59,7 @@ def test_redis_slot_hydration_marks_connections_disconnected_after_restart():
                 "color": "blue",
                 "reconnect_token": "token-2",
                 "model_name": "model_b",
+                "username": "bob",
                 "connected": True,
                 "disconnected_at": None,
             },
@@ -88,5 +92,6 @@ def test_redis_slot_hydration_marks_connections_disconnected_after_restart():
         assert slot.player_2.connected is False
         assert slot.player_1.reconnect_token == "token-1"
         assert slot.player_2.model_name == "model_b"
+        assert slot.player_2.username == "bob"
 
     run(scenario())

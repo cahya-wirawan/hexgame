@@ -16,6 +16,7 @@ type SlotSnapshot = {
   connected_player_count: number;
   players: number[];
   player_models: Record<string, string>;
+  player_usernames: Record<string, string>;
   connected_players: number[];
   disconnected_players: number[];
   current_turn: number | null;
@@ -49,7 +50,7 @@ const featureRows = [
   {
     icon: Activity,
     title: "Live Match Operations",
-    text: "Monitor slots, model names, score, current turn, board preview, reconnect state, and waiting rooms."
+    text: "Monitor slots, model names, owners, score, current turn, board preview, reconnect state, and waiting rooms."
   },
   {
     icon: GitBranch,
@@ -439,8 +440,8 @@ python -m examples.hex_client --model-name model_my_agent --slot-id 1`}</code>
           </span>
           <h2>5. Protocol essentials</h2>
           <ul>
-            <li>Join matchmaking with <strong>/ws/matchmake?board_size=7&amp;series_length=3&amp;model_name=name</strong>.</li>
-            <li>Join a waiting slot with <strong>/ws/join-slot?slot_id=1&amp;model_name=name</strong>.</li>
+            <li>Join matchmaking with <strong>/ws/matchmake?board_size=7&amp;series_length=3&amp;model_name=name&amp;username=owner</strong>.</li>
+            <li>Join a waiting slot with <strong>/ws/join-slot?slot_id=1&amp;model_name=name&amp;username=owner</strong>.</li>
             <li>Send moves as <strong>{"{ type: 'move', payload: { q, r } }"}</strong>.</li>
             <li>Player goals are red/player_1 left-to-right and blue/player_2 top-to-bottom.</li>
             <li>Rejected moves return <strong>move_rejected</strong>; accepted moves are broadcast to both players.</li>
@@ -480,6 +481,9 @@ function PlayerList({ slot }: { slot: SlotSnapshot }) {
           {player}
           {slot.player_models?.[String(player)] ? (
             <span className="text-slate-500"> · {slot.player_models[String(player)]}</span>
+          ) : null}
+          {slot.player_usernames?.[String(player)] ? (
+            <span className="text-slate-500"> · @{slot.player_usernames[String(player)]}</span>
           ) : null}
         </span>
       ))}

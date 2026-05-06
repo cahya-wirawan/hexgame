@@ -32,6 +32,10 @@ CELL_SYMBOLS = {
     1: "B",
 }
 
+
+def public_query(params: dict[str, object | None]) -> str:
+    return urlencode({key: value for key, value in params.items() if value is not None})
+
 module_name = "model_random"
 function_name = "agent"
 
@@ -67,6 +71,7 @@ async def run(
     board_size: int,
     series_length: int,
     slot_id: int | None,
+    username: str | None,
     seed: int | None,
     move_delay: float,
     replay_log: str,
@@ -82,16 +87,18 @@ async def run(
     )
 
     if slot_id is None:
-        query = urlencode({
+        query = public_query({
             "board_size": board_size,
             "series_length": series_length,
             "model_name": model_name,
+            "username": username,
         })
         uri = f"{server.rstrip('/')}/ws/matchmake?{query}"
     else:
-        query = urlencode({
+        query = public_query({
             "slot_id": slot_id,
             "model_name": model_name,
+            "username": username,
         })
         uri = f"{server.rstrip('/')}/ws/join-slot?{query}"
     player_id: int | None = None
@@ -101,6 +108,7 @@ async def run(
     replay.record(
         "client_start",
         model_name=model_name,
+        username=username,
         server=server,
         board_size=board_size,
         series_length=series_length,
@@ -251,6 +259,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int)
     parser.add_argument("--move-delay", type=float, default=0.1)
     parser.add_argument("--model-name", type=str, default="model_random")
+    parser.add_argument("--username", type=str, help="Public username shown as the model owner in slot views.")
     parser.add_argument(
         "--replay-log",
         default="auto",
@@ -269,6 +278,7 @@ def main() -> None:
             args.board_size,
             args.series_length,
             args.slot_id,
+            args.username,
             args.seed,
             args.move_delay,
             args.replay_log,

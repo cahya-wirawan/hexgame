@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, Column, DateTime, Integer, String, create_engine
+from sqlalchemy import JSON, Column, DateTime, Integer, String, create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
@@ -22,6 +22,8 @@ class CompletedSeries(Base):
     player_2_wins = Column(Integer, nullable=False)
     player_1_model = Column(String(80), nullable=True)
     player_2_model = Column(String(80), nullable=True)
+    player_1_username = Column(String(80), nullable=True)
+    player_2_username = Column(String(80), nullable=True)
     final_board = Column(JSON, nullable=True)
     slot_snapshot = Column(JSON, nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=False)
@@ -37,9 +39,34 @@ class DatabaseMatchRepository:
     async def initialize(self) -> None:
         if self.auto_create:
             Base.metadata.create_all(self.engine)
+            self._ensure_auto_created_columns()
 
     async def close(self) -> None:
         self.engine.dispose()
+
+    def _ensure_auto_created_columns(self) -> None:
+        existing_columns = {
+            column["name"]
+            for column in inspect(self.engine).get_columns(CompletedSeries.__tablename__)
+        }
+        expected_columns = {
+            "player_1_username": "VARCHAR(80)",
+            "player_2_username": "VARCHAR(80)",
+        }
+        missing_columns = [
+            (column_name, column_type)
+            for column_name, column_type in expected_columns.items()
+            if column_name not in existing_columns
+        ]
+
+        if not missing_columns:
+            return
+
+        with self.engine.begin() as connection:
+            for column_name, column_type in missing_columns:
+                connection.execute(
+                    text(f"ALTER TABLE {CompletedSeries.__tablename__} ADD COLUMN {column_name} {column_type}")
+                )
 
     async def record_completed_series(self, slot_snapshot: dict[str, Any]) -> None:
         series_winner = slot_snapshot.get("series_winner")
@@ -47,6 +74,7 @@ class DatabaseMatchRepository:
             return
 
         player_models = slot_snapshot.get("player_models") or {}
+        player_usernames = slot_snapshot.get("player_usernames") or {}
         record = CompletedSeries(
             slot_id=slot_snapshot["slot_id"],
             board_size=slot_snapshot["board_size"],
@@ -57,6 +85,8 @@ class DatabaseMatchRepository:
             player_2_wins=slot_snapshot.get("player_2_wins") or 0,
             player_1_model=player_models.get("-1"),
             player_2_model=player_models.get("1"),
+            player_1_username=player_usernames.get("-1"),
+            player_2_username=player_usernames.get("1"),
             final_board=slot_snapshot.get("board"),
             slot_snapshot=slot_snapshot,
             completed_at=datetime.now(timezone.utc),

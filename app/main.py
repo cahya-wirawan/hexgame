@@ -112,13 +112,13 @@ def docs():
     return frontend_index()
 
 
-def public_client_name(raw_name: Optional[str]) -> Optional[str]:
-    if raw_name is None:
+def public_client_label(raw_value: Optional[str], *, max_length: int = 80) -> Optional[str]:
+    if raw_value is None:
         return None
-    cleaned = "".join(ch for ch in raw_name if ch.isprintable()).strip()
+    cleaned = "".join(ch for ch in raw_value if ch.isprintable()).strip()
     if not cleaned:
         return None
-    return cleaned[:80]
+    return cleaned[:max_length]
 
 
 @app.websocket("/ws/matchmake")
@@ -127,6 +127,7 @@ async def websocket_matchmake(
     board_size: int,
     series_length: int = 1,
     model_name: Optional[str] = None,
+    username: Optional[str] = None,
 ):
     if board_size not in ALLOWED_BOARD_SIZES:
         await websocket.accept()
@@ -140,7 +141,13 @@ async def websocket_matchmake(
         return
 
     await websocket.accept()
-    assignment = await slot_manager.join_slot(websocket, board_size, series_length, public_client_name(model_name))
+    assignment = await slot_manager.join_slot(
+        websocket,
+        board_size,
+        series_length,
+        public_client_label(model_name),
+        public_client_label(username),
+    )
     if assignment is None:
         await websocket.send_json(error("No available slot"))
         await websocket.close()
@@ -150,9 +157,19 @@ async def websocket_matchmake(
 
 
 @app.websocket("/ws/join-slot")
-async def websocket_join_slot(websocket: WebSocket, slot_id: int, model_name: Optional[str] = None):
+async def websocket_join_slot(
+    websocket: WebSocket,
+    slot_id: int,
+    model_name: Optional[str] = None,
+    username: Optional[str] = None,
+):
     await websocket.accept()
-    assignment, failure = await slot_manager.join_slot_by_id(websocket, slot_id, public_client_name(model_name))
+    assignment, failure = await slot_manager.join_slot_by_id(
+        websocket,
+        slot_id,
+        public_client_label(model_name),
+        public_client_label(username),
+    )
     if failure is not None or assignment is None:
         await websocket.send_json(error(failure or "Could not join slot"))
         await websocket.close(code=1008)

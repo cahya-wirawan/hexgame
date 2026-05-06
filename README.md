@@ -138,9 +138,10 @@ python -m uvicorn app.main:app --port 8000
 ```
 
 Redis stores active slots, board state, series score, public model names,
-connection status, and reconnect tokens. Raw WebSocket objects are never stored
-in Redis; after a server restart, persisted players are marked disconnected and
-can return through `/ws/reconnect` using their reconnect token.
+public usernames, connection status, and reconnect tokens. Raw WebSocket
+objects are never stored in Redis; after a server restart, persisted players
+are marked disconnected and can return through `/ws/reconnect` using their
+reconnect token.
 
 Use `HEX_REDIS_KEY_PREFIX` to isolate environments that share the same Redis
 database.
@@ -160,8 +161,8 @@ startup. Set `HEX_DATABASE_AUTO_CREATE=0` if migrations or external schema
 management should own table creation.
 
 The completed-series record stores slot id, board size, series length, winner,
-score, public model names, final board, and the final public slot snapshot. It
-does not store reconnect tokens or WebSocket objects.
+score, public model names, public usernames, final board, and the final public
+slot snapshot. It does not store reconnect tokens or WebSocket objects.
 
 ## Frontend
 
@@ -223,6 +224,7 @@ Example:
     "connected_player_count": 2,
     "players": [-1, 1],
     "player_models": {"-1": "model_alphazero", "1": "human"},
+    "player_usernames": {"-1": "alice", "1": "bob"},
     "connected_players": [-1, 1],
     "disconnected_players": [],
     "current_turn": -1,
@@ -269,11 +271,11 @@ Allowed series lengths:
 `series_length` defaults to `1`. The server only matches players who request
 the same board size and the same series length.
 
-Clients may include `model_name` to display a non-secret player label in
-`/slots` and `/overview`:
+Clients may include `model_name` and `username` to display non-secret model
+labels and owner names in `/slots` and `/overview`:
 
 ```text
-/ws/matchmake?board_size=11&series_length=3&model_name=model_alphazero
+/ws/matchmake?board_size=11&series_length=3&model_name=model_alphazero&username=alice
 ```
 
 `/ws/join-slot?slot_id=1`

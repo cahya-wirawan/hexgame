@@ -26,10 +26,10 @@ def test_health_slots_landing_docs_and_overview():
     assert "swagger-ui" in api_docs_response.text
 
 
-def test_two_clients_with_same_board_size_are_matched_and_model_names_are_public():
+def test_two_clients_with_same_board_size_are_matched_and_model_names_and_usernames_are_public():
     client = TestClient(app)
 
-    with client.websocket_connect("/ws/matchmake?board_size=11&model_name=model_alpha") as player_1:
+    with client.websocket_connect("/ws/matchmake?board_size=11&model_name=model_alpha&username=alice") as player_1:
         joined_1 = player_1.receive_json()
         assert joined_1["type"] == "joined"
         assert joined_1["payload"]["player"] == PLAYER_1
@@ -37,7 +37,7 @@ def test_two_clients_with_same_board_size_are_matched_and_model_names_are_public
         assert isinstance(joined_1["payload"]["reconnect_token"], str)
         assert player_1.receive_json()["type"] == "waiting_for_opponent"
 
-        with client.websocket_connect("/ws/matchmake?board_size=11&model_name=human") as player_2:
+        with client.websocket_connect("/ws/matchmake?board_size=11&model_name=human&username=bob") as player_2:
             joined_2 = player_2.receive_json()
             assert joined_2["type"] == "joined"
             assert joined_2["payload"]["player"] == PLAYER_2
@@ -52,6 +52,7 @@ def test_two_clients_with_same_board_size_are_matched_and_model_names_are_public
 
             slots = client.get("/slots").json()
             assert slots[0]["player_models"] == {str(PLAYER_1): "model_alpha", str(PLAYER_2): "human"}
+            assert slots[0]["player_usernames"] == {str(PLAYER_1): "alice", str(PLAYER_2): "bob"}
             assert "reconnect_token" not in slots[0]
 
 
@@ -95,7 +96,9 @@ def test_client_can_join_specific_waiting_slot_and_inherits_series_rules():
         joined_1 = player_1.receive_json()
         player_1.receive_json()
 
-        with client.websocket_connect(f"/ws/join-slot?slot_id={joined_1['payload']['slot_id']}&model_name=human") as player_2:
+        with client.websocket_connect(
+            f"/ws/join-slot?slot_id={joined_1['payload']['slot_id']}&model_name=human&username=bob"
+        ) as player_2:
             joined_2 = player_2.receive_json()
             start_1 = player_1.receive_json()
             start_2 = player_2.receive_json()
@@ -109,6 +112,7 @@ def test_client_can_join_specific_waiting_slot_and_inherits_series_rules():
             assert start_1["payload"]["wins_required"] == 3
             assert start_2["payload"]["board_size"] == 11
             assert client.get("/slots").json()[0]["player_models"][str(PLAYER_2)] == "human"
+            assert client.get("/slots").json()[0]["player_usernames"][str(PLAYER_2)] == "bob"
 
 
 def test_join_specific_slot_rejects_empty_slot():

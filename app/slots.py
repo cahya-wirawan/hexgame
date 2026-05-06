@@ -25,6 +25,7 @@ class SlotManager:
         board_size: int,
         series_length: int = 1,
         model_name: str | None = None,
+        username: str | None = None,
     ) -> SlotAssignment | None:
         async with self.lock:
             slot = self._find_waiting_slot(board_size, series_length) or self._find_empty_slot()
@@ -41,6 +42,7 @@ class SlotManager:
                     color=PLAYER_COLORS[PLAYER_1],
                     reconnect_token=secrets.token_urlsafe(32),
                     model_name=model_name,
+                    username=username,
                 )
                 slot.state = "waiting"
                 return self._assignment(slot, PLAYER_1)
@@ -57,6 +59,7 @@ class SlotManager:
                     color=PLAYER_COLORS[PLAYER_2],
                     reconnect_token=secrets.token_urlsafe(32),
                     model_name=model_name,
+                    username=username,
                 )
                 slot.state = "full"
                 first_turn = slot.series_state.first_turn() if slot.series_state else PLAYER_1
@@ -70,6 +73,7 @@ class SlotManager:
         websocket: WebSocket,
         slot_id: int,
         model_name: str | None = None,
+        username: str | None = None,
     ) -> tuple[SlotAssignment | None, str | None]:
         async with self.lock:
             slot = self.slots.get(slot_id)
@@ -88,6 +92,7 @@ class SlotManager:
                 color=PLAYER_COLORS[PLAYER_2],
                 reconnect_token=secrets.token_urlsafe(32),
                 model_name=model_name,
+                username=username,
             )
             slot.state = "full"
             first_turn = slot.series_state.first_turn() if slot.series_state else PLAYER_1
@@ -179,6 +184,7 @@ class SlotManager:
                 color=PLAYER_COLORS[PLAYER_1],
                 reconnect_token=secrets.token_urlsafe(32),
                 model_name=keeper.model_name,
+                username=keeper.username,
             )
             slot.player_2 = None
             slot.state = "waiting"

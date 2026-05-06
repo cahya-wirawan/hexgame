@@ -1,6 +1,6 @@
 import os
 
-MAX_SLOTS = 6
+MAX_SLOTS = int(os.getenv("MAX_SLOTS", "6"))
 ALLOWED_BOARD_SIZES = {7, 9, 11, 13, 19}
 ALLOWED_SERIES_LENGTHS = {1, 3, 5, 7, 9, 11, 13, 15}
 PROTOCOL_VERSION = 1

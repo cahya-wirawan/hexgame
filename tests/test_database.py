@@ -112,3 +112,40 @@ def test_database_repository_adds_username_columns_to_existing_auto_created_tabl
         await repository.close()
 
     run(scenario())
+
+
+def test_database_repository_returns_statistics_and_leaderboard(tmp_path):
+    async def scenario():
+        repository = DatabaseMatchRepository(f"sqlite:///{tmp_path / 'hex.db'}")
+        await repository.initialize()
+
+        first = completed_snapshot()
+        await repository.record_completed_series(first)
+
+        second = completed_snapshot()
+        second["slot_id"] = 2
+        second["board_size"] = 11
+        second["series_length"] = 1
+        second["winner"] = PLAYER_2
+        second["current_game_number"] = 1
+        second["player_1_wins"] = 0
+        second["player_2_wins"] = 1
+        second["series_winner"] = PLAYER_2
+        await repository.record_completed_series(second)
+
+        stats = await repository.statistics()
+
+        assert stats["persistence_enabled"] is True
+        assert stats["totals"]["matches"] == 2
+        assert stats["totals"]["games"] == 3
+        assert stats["board_sizes"] == {"7": 1, "11": 1}
+        assert stats["series_lengths"] == {"3": 1, "1": 1}
+        assert stats["leaderboard"][0]["model_name"] == "model_a"
+        assert stats["leaderboard"][0]["username"] == "alice"
+        assert stats["leaderboard"][0]["wins"] == 1
+        assert stats["leaderboard"][0]["losses"] == 1
+        assert len(stats["recent_matches"]) == 2
+
+        await repository.close()
+
+    run(scenario())

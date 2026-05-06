@@ -1,4 +1,18 @@
-import { Activity, BookOpen, Code2, Database, GitBranch, RefreshCw, Swords, Terminal } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  BookOpen,
+  Code2,
+  Database,
+  GitBranch,
+  History,
+  Medal,
+  RefreshCw,
+  Swords,
+  Terminal,
+  Trophy,
+  Users
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "./components/ui/badge";
@@ -28,6 +42,47 @@ type SlotSnapshot = {
   player_1_wins: number;
   player_2_wins: number;
   series_winner: number | null;
+};
+
+type LeaderboardRow = {
+  model_name: string;
+  username: string | null;
+  matches: number;
+  wins: number;
+  losses: number;
+  games_won: number;
+  games_lost: number;
+  win_rate: number;
+};
+
+type RecentMatch = {
+  id: number;
+  slot_id: number;
+  board_size: number;
+  series_length: number;
+  games_played: number;
+  winner: number;
+  player_1_model: string | null;
+  player_2_model: string | null;
+  player_1_username: string | null;
+  player_2_username: string | null;
+  player_1_wins: number;
+  player_2_wins: number;
+  completed_at: string;
+};
+
+type StatisticsSnapshot = {
+  persistence_enabled: boolean;
+  totals: {
+    matches: number;
+    games: number;
+    models: number;
+    model_entries: number;
+  };
+  leaderboard: LeaderboardRow[];
+  board_sizes: Record<string, number>;
+  series_lengths: Record<string, number>;
+  recent_matches: RecentMatch[];
 };
 
 const stateTone: Record<SlotState, "empty" | "waiting" | "full"> = {
@@ -133,6 +188,7 @@ function LandingPage({ totals }: { totals: Record<SlotState, number> }) {
           <div className="nav-links">
             <a href="#architecture">Architecture</a>
             <a href="/overview">Slots</a>
+            <a href="/statistics">Stats</a>
             <a href="/docs">Docs</a>
             <a href="#quickstart">Run</a>
           </div>
@@ -159,6 +215,10 @@ function LandingPage({ totals }: { totals: Record<SlotState, number> }) {
             <a className="secondary-link" href="/docs">
               <BookOpen className="h-4 w-4" />
               Read docs
+            </a>
+            <a className="secondary-link" href="/statistics">
+              <BarChart3 className="h-4 w-4" />
+              View stats
             </a>
           </div>
         </div>
@@ -352,6 +412,7 @@ function DocsPage() {
         </a>
         <div className="nav-links">
           <a href="/overview">Slots</a>
+          <a href="/statistics">Stats</a>
           <a href="#run">Run</a>
           <a href="#model">Add a model</a>
           <a href="#protocol">Protocol</a>
@@ -469,6 +530,205 @@ docker compose up --build`}</code>
   );
 }
 
+function formatPercent(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function modelLabel(modelName: string | null, username: string | null) {
+  return username ? `${modelName ?? "unknown"} @${username}` : modelName ?? "unknown";
+}
+
+function DistributionBars({ values }: { values: Record<string, number> }) {
+  const rows = Object.entries(values).sort((a, b) => Number(a[0]) - Number(b[0]));
+  const maxValue = Math.max(1, ...rows.map(([, value]) => value));
+
+  if (!rows.length) {
+    return <span className="stats-muted">No recorded data</span>;
+  }
+
+  return (
+    <div className="stats-bars">
+      {rows.map(([label, value]) => (
+        <div className="stats-bar-row" key={label}>
+          <span>{label}</span>
+          <div className="stats-bar-track">
+            <span style={{ width: `${Math.max(6, (value / maxValue) * 100)}%` }} />
+          </div>
+          <strong>{value}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StatisticsPage({
+  stats,
+  updatedAt,
+  error,
+  isLoading,
+  refresh
+}: {
+  stats: StatisticsSnapshot | null;
+  updatedAt: Date | null;
+  error: string | null;
+  isLoading: boolean;
+  refresh: () => Promise<void>;
+}) {
+  const leaderboard = stats?.leaderboard ?? [];
+  const recentMatches = stats?.recent_matches ?? [];
+  const topModel = leaderboard[0];
+
+  return (
+    <main id="top" className="stats-shell">
+      <nav className="docs-nav stats-nav">
+        <a className="brand-mark overview-brand" href="/" aria-label="Go to Hex Game Server landing page">
+          <span className="brand-glyph">H</span>
+          <span>Hex Game Server</span>
+        </a>
+        <div className="nav-links">
+          <a href="/overview">Slots</a>
+          <a href="/statistics">Stats</a>
+          <a href="/docs">Docs</a>
+        </div>
+      </nav>
+
+      <section className="stats-hero">
+        <div>
+          <p className="eyebrow">Historical performance</p>
+          <h1>Model statistics and leaderboard.</h1>
+          <p>
+            Completed series history, model ownership, win rates, board-size mix, and recent match outcomes.
+          </p>
+        </div>
+        <Button onClick={() => void refresh()} disabled={isLoading} aria-label="Refresh statistics">
+          <RefreshCw className={isLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+          Refresh
+        </Button>
+      </section>
+
+      {error ? <div className="stats-alert">{error}</div> : null}
+
+      {stats && !stats.persistence_enabled ? (
+        <section className="stats-empty">
+          <Database className="h-6 w-6" />
+          <h2>Database history is disabled</h2>
+          <p>Set <strong>HEX_DATABASE_URL</strong> to record completed series and populate this page.</p>
+        </section>
+      ) : null}
+
+      <section className="stats-kpis" aria-label="Statistics summary">
+        <article>
+          <Trophy className="h-5 w-5" />
+          <span>Leader</span>
+          <strong>{topModel ? modelLabel(topModel.model_name, topModel.username) : "None"}</strong>
+        </article>
+        <article>
+          <Swords className="h-5 w-5" />
+          <span>Matches</span>
+          <strong>{stats?.totals.matches ?? 0}</strong>
+        </article>
+        <article>
+          <Activity className="h-5 w-5" />
+          <span>Games</span>
+          <strong>{stats?.totals.games ?? 0}</strong>
+        </article>
+        <article>
+          <Users className="h-5 w-5" />
+          <span>Models</span>
+          <strong>{stats?.totals.models ?? 0}</strong>
+        </article>
+      </section>
+
+      <section className="stats-layout">
+        <div className="stats-panel leaderboard-panel">
+          <div className="stats-panel-heading">
+            <span>
+              <Medal className="h-5 w-5" />
+              Leaderboard
+            </span>
+            <small>{updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : "Waiting for data"}</small>
+          </div>
+          {leaderboard.length ? (
+            <div className="leaderboard-table" role="table" aria-label="Model leaderboard">
+              <div className="leaderboard-row leaderboard-head" role="row">
+                <span>Rank</span>
+                <span>Model</span>
+                <span>W-L</span>
+                <span>Games</span>
+                <span>Rate</span>
+              </div>
+              {leaderboard.map((row, index) => (
+                <div className="leaderboard-row" role="row" key={`${row.model_name}-${row.username ?? ""}`}>
+                  <span className="rank-cell">{index + 1}</span>
+                  <span>
+                    <strong>{row.model_name}</strong>
+                    {row.username ? <small>@{row.username}</small> : null}
+                  </span>
+                  <span>{row.wins}-{row.losses}</span>
+                  <span>{row.games_won}-{row.games_lost}</span>
+                  <span>{formatPercent(row.win_rate)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="stats-muted">No completed matches have been recorded yet.</p>
+          )}
+        </div>
+
+        <div className="stats-panel">
+          <div className="stats-panel-heading">
+            <span>
+              <BarChart3 className="h-5 w-5" />
+              Match Mix
+            </span>
+          </div>
+          <h3>Board sizes</h3>
+          <DistributionBars values={stats?.board_sizes ?? {}} />
+          <h3>Series lengths</h3>
+          <DistributionBars values={stats?.series_lengths ?? {}} />
+        </div>
+      </section>
+
+      <section className="stats-panel recent-panel">
+        <div className="stats-panel-heading">
+          <span>
+            <History className="h-5 w-5" />
+            Recent Matches
+          </span>
+        </div>
+        {recentMatches.length ? (
+          <div className="recent-list">
+            {recentMatches.map((match) => {
+              const winner =
+                match.winner === -1
+                  ? modelLabel(match.player_1_model, match.player_1_username)
+                  : modelLabel(match.player_2_model, match.player_2_username);
+              return (
+                <article key={match.id}>
+                  <div>
+                    <strong>{winner}</strong>
+                    <span>won {match.player_1_wins}-{match.player_2_wins}</span>
+                  </div>
+                  <p>
+                    {modelLabel(match.player_1_model, match.player_1_username)} vs{" "}
+                    {modelLabel(match.player_2_model, match.player_2_username)}
+                  </p>
+                  <small>
+                    {match.board_size}x{match.board_size} · best of {match.series_length} ·{" "}
+                    {new Date(match.completed_at).toLocaleString()}
+                  </small>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="stats-muted">Recent matches will appear after the first completed series.</p>
+        )}
+      </section>
+    </main>
+  );
+}
+
 function PlayerList({ slot }: { slot: SlotSnapshot }) {
   if (!slot.players.length) {
     return <span>None</span>;
@@ -493,9 +753,14 @@ function PlayerList({ slot }: { slot: SlotSnapshot }) {
 
 export default function App() {
   const [slots, setSlots] = useState<SlotSnapshot[]>([]);
+  const [stats, setStats] = useState<StatisticsSnapshot | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const currentPath = window.location.pathname.replace(/\/$/, "") || "/";
+  const isOverviewPage = currentPath === "/overview";
+  const isDocsPage = currentPath === "/docs";
+  const isStatisticsPage = currentPath === "/statistics";
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -515,11 +780,30 @@ export default function App() {
     }
   }, []);
 
+  const refreshStats = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch("/api/statistics", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Request failed with ${response.status}`);
+      }
+      const data = (await response.json()) as StatisticsSnapshot;
+      setStats(data);
+      setUpdatedAt(new Date());
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to load statistics");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    void refresh();
-    const id = window.setInterval(() => void refresh(), 2000);
+    const load = isStatisticsPage ? refreshStats : refresh;
+    void load();
+    const id = window.setInterval(() => void load(), isStatisticsPage ? 10000 : 2000);
     return () => window.clearInterval(id);
-  }, [refresh]);
+  }, [isStatisticsPage, refresh, refreshStats]);
 
   const totals = useMemo(() => {
     return slots.reduce(
@@ -531,12 +815,20 @@ export default function App() {
     );
   }, [slots]);
 
-  const currentPath = window.location.pathname.replace(/\/$/, "") || "/";
-  const isOverviewPage = currentPath === "/overview";
-  const isDocsPage = currentPath === "/docs";
-
   if (isDocsPage) {
     return <DocsPage />;
+  }
+
+  if (isStatisticsPage) {
+    return (
+      <StatisticsPage
+        stats={stats}
+        updatedAt={updatedAt}
+        error={error}
+        isLoading={isLoading}
+        refresh={refreshStats}
+      />
+    );
   }
 
   if (!isOverviewPage) {

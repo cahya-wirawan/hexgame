@@ -17,6 +17,12 @@ def test_health_slots_landing_docs_and_overview():
     response = client.get("/overview")
     assert response.status_code == 200
     assert "Hex Game Server" in response.text
+    stats_page_response = client.get("/statistics")
+    assert stats_page_response.status_code == 200
+    assert "Hex Game Server" in stats_page_response.text
+    stats_response = client.get("/api/statistics")
+    assert stats_response.status_code == 200
+    assert stats_response.json()["persistence_enabled"] is False
     docs_response = client.get("/docs")
     assert docs_response.status_code == 200
     assert "Hex Game Server" in docs_response.text

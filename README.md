@@ -2,7 +2,8 @@
 
 FastAPI-based Hex game server with WebSocket matchmaking, authoritative game
 state, win detection, a random-move test client, and a Vite/Tailwind/shadcn-ui
-frontend with a landing page plus an operational overview dashboard.
+frontend with a landing page, operational overview dashboard, and statistics
+leaderboard.
 
 The current implementation covers Phases 1-7 from `PLAN.md`:
 
@@ -12,7 +13,8 @@ The current implementation covers Phases 1-7 from `PLAN.md`:
 - WebSocket real-time gameplay.
 - Server-authoritative move validation and turn tracking.
 - Hex win detection.
-- `/` project landing page, `/docs` usage guide, and `/overview` monitoring page.
+- `/` project landing page, `/docs` usage guide, `/overview` monitoring page,
+  and `/statistics` model leaderboard.
 - Model-driven clients, including a pygame GUI client for visual board output.
 - Reconnect tokens and `/ws/reconnect` support for temporary network drops.
 - Optional Redis-backed slot, game, session, and reconnect-token state.
@@ -65,6 +67,7 @@ Open:
 - Landing page: `https://hexgame.codingdojo.ai/`
 - Documentation: `https://hexgame.codingdojo.ai/docs`
 - Overview dashboard: `https://hexgame.codingdojo.ai/overview`
+- Statistics leaderboard: `https://hexgame.codingdojo.ai/statistics`
 
 ## Running A Local Server
 
@@ -81,6 +84,7 @@ Then open:
 - Landing page: `http://127.0.0.1:8000/`
 - Documentation: `http://127.0.0.1:8000/docs`
 - Overview dashboard: `http://127.0.0.1:8000/overview`
+- Statistics leaderboard: `http://127.0.0.1:8000/statistics`
 - OpenAPI/Swagger UI: `http://127.0.0.1:8000/api/docs`
 
 Point clients at the local server with `--server`:
@@ -181,7 +185,8 @@ cd frontend
 npm run dev
 ```
 
-The Vite dev server proxies `/slots` to `http://127.0.0.1:8000`.
+The Vite dev server proxies `/slots` and `/api/statistics` to
+`http://127.0.0.1:8000`.
 
 Build the production dashboard:
 
@@ -191,7 +196,8 @@ npm run build
 ```
 
 The production build writes to `app/static/overview/`. FastAPI serves the
-landing page at `/`, the documentation page at `/docs`, the dashboard at `/overview`, and assets from
+landing page at `/`, the documentation page at `/docs`, the dashboard at
+`/overview`, the leaderboard at `/statistics`, and assets from
 `/overview/assets/...`.
 
 ## API
@@ -251,6 +257,39 @@ Serves the built project documentation page.
 `GET /overview`
 
 Serves the built dashboard.
+
+`GET /statistics`
+
+Serves the built model statistics and leaderboard page.
+
+`GET /api/statistics`
+
+Returns completed-series statistics. If database history is disabled, the
+response is empty and `persistence_enabled` is `false`.
+
+Example:
+
+```json
+{
+  "persistence_enabled": true,
+  "totals": {"matches": 12, "games": 31, "models": 4, "model_entries": 24},
+  "leaderboard": [
+    {
+      "model_name": "model_alphazero",
+      "username": "alice",
+      "matches": 8,
+      "wins": 6,
+      "losses": 2,
+      "games_won": 14,
+      "games_lost": 7,
+      "win_rate": 0.75
+    }
+  ],
+  "board_sizes": {"7": 6, "11": 6},
+  "series_lengths": {"1": 8, "3": 4},
+  "recent_matches": []
+}
+```
 
 ### WebSocket
 

@@ -88,6 +88,20 @@ async def get_slots():
     return await slot_manager.snapshot()
 
 
+@app.get("/api/statistics")
+async def get_statistics():
+    if match_repository is None:
+        return {
+            "persistence_enabled": False,
+            "totals": {"matches": 0, "games": 0, "models": 0, "model_entries": 0},
+            "leaderboard": [],
+            "board_sizes": {},
+            "series_lengths": {},
+            "recent_matches": [],
+        }
+    return await match_repository.statistics()
+
+
 def frontend_index():
     if OVERVIEW_INDEX.exists():
         return HTMLResponse(OVERVIEW_INDEX.read_text(encoding="utf-8"))
@@ -104,6 +118,11 @@ def landing_page():
 
 @app.get("/overview")
 def overview():
+    return frontend_index()
+
+
+@app.get("/statistics")
+def statistics_page():
     return frontend_index()
 
 

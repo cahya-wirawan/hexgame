@@ -1,6 +1,6 @@
-from app.config import PLAYER_1, PLAYER_2
-from app.game import apply_move, check_winner
-from app.models import HexGameState
+from hexgame.server.config import PLAYER_1, PLAYER_2
+from hexgame.server.game import apply_move, check_winner
+from hexgame.server.models import HexGameState
 
 
 def test_board_initializes_with_correct_size():

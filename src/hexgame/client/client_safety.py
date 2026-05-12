@@ -34,7 +34,7 @@ class MatchReplayLog:
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         filename = f"{timestamp}_{model_name}_{board_size}x{board_size}_bo{series_length}.jsonl"
-        return cls(Path("examples") / "replays" / filename)
+        return cls(Path("replays") / filename)
 
     def record(self, event: str, **fields: Any) -> None:
         if self.path is None:

@@ -5,6 +5,10 @@ state, win detection, a random-move test client, and a Vite/Tailwind/shadcn-ui
 frontend with a landing page, operational overview dashboard, and statistics
 leaderboard.
 
+Packaged as `hexgame` on PyPI: `pip install hexgame` gives you the
+`hexgame-server` command (the FastAPI server) and the `hexgame` command
+(`random`, `play`, and `gui` clients).
+
 The current implementation covers Phases 1-7 from `PLAN.md`:
 
 - Fixed in-memory game slots.
@@ -25,24 +29,40 @@ User accounts and ratings are intentionally not implemented yet.
 ## Requirements
 
 - Python 3.10+ recommended.
-- Node.js 20+ recommended for the overview frontend.
-- `pygame` is required for `examples/hex_client_gui.py`.
-- Redis is optional. The default backend is still in-process memory for local
-  development.
-- PostgreSQL is optional. Completed-series history is disabled unless
-  `HEX_DATABASE_URL` is set.
+- Node.js 20+ recommended only if you rebuild the overview frontend yourself.
+- `pygame` (the `[gui]` extra) is required for the pygame GUI client.
+- Redis is optional (the `[redis]` extra). The default backend is in-process
+  memory for local development.
+- PostgreSQL is optional (the `[postgres]` extra). Completed-series history is
+  disabled unless `HEX_DATABASE_URL` is set.
 
-Install backend dependencies:
+## Installation
+
+The project is packaged as `hexgame`. Installing it provides two console
+commands: `hexgame-server` (the FastAPI server) and `hexgame` (the clients).
+
+End users — install from PyPI:
 
 ```bash
+pip install hexgame                 # server + random/model clients
+pip install "hexgame[gui]"          # also the pygame GUI client
+pip install "hexgame[all]"          # everything: redis, postgres, gui
+```
+
+Developers — editable install from a checkout:
+
+```bash
+python -m pip install -e ".[dev,all]"
+# or, equivalently:
 python -m pip install -r requirements.txt
 ```
 
-Install frontend dependencies:
+Rebuilding the overview frontend (only if you change `frontend/`):
 
 ```bash
 cd frontend
 npm install
+npm run build        # writes to src/hexgame/server/static/overview/
 ```
 
 ## Using The Hosted Server
@@ -53,13 +73,13 @@ The model clients default to the hosted arena:
 wss://hexgame.codingdojo.ai
 ```
 
-That means users can install the client dependencies, add or choose a model,
-and connect directly without running their own FastAPI server:
+That means users can install the package, add or choose a model, and connect
+directly without running their own FastAPI server:
 
 ```bash
-python -m pip install -r requirements.txt
-python -m examples.hex_client --model-name model_random --board-size 7
-python -m examples.hex_client_gui --model-name human --board-size 7
+pip install "hexgame[gui]"
+hexgame play --model-name model_random --board-size 7
+hexgame gui --model-name human --board-size 7
 ```
 
 Open:
@@ -74,7 +94,7 @@ Open:
 From the repository root:
 
 ```bash
-python -m uvicorn app.main:app --port 8000
+hexgame-server --port 8000
 ```
 
 Then open:
@@ -90,13 +110,15 @@ Then open:
 Point clients at the local server with `--server`:
 
 ```bash
-python -m examples.hex_client --model-name model_random --board-size 7 --server ws://localhost:8000
-python -m examples.hex_client_gui --model-name human --board-size 7 --server ws://localhost:8000
+hexgame play --model-name model_random --board-size 7 --server ws://localhost:8000
+hexgame gui --model-name human --board-size 7 --server ws://localhost:8000
 ```
 
-If WebSocket clients receive HTTP 404 on `/ws/matchmake`, restart Uvicorn after
-installing `requirements.txt`. Uvicorn must start with WebSocket support
-available.
+`hexgame-server` is a thin wrapper around `uvicorn hexgame.server.main:app`;
+pass `--host`, `--port`, `--workers`, `--reload`, or `--log-level` as needed.
+If WebSocket clients receive HTTP 404 on `/ws/matchmake`, reinstall the package
+(`pip install -e ".[dev,all]"`) so `uvicorn[standard]`/`websockets` are present,
+then restart the server.
 
 ## Docker Compose
 
@@ -129,7 +151,7 @@ docker compose down -v
 By default, state is stored in memory:
 
 ```bash
-python -m uvicorn app.main:app --port 8000
+hexgame-server --port 8000
 ```
 
 To persist active slot state in Redis and share slot/game/session/reconnect
@@ -138,7 +160,7 @@ state between server processes, start Redis and run:
 ```bash
 HEX_STATE_BACKEND=redis \
 HEX_REDIS_URL=redis://127.0.0.1:6379/0 \
-python -m uvicorn app.main:app --port 8000
+hexgame-server --port 8000
 ```
 
 Redis stores active slots, board state, series score, public model names,
@@ -157,7 +179,7 @@ Completed series can be written through SQLAlchemy ORM to PostgreSQL. Set
 
 ```bash
 HEX_DATABASE_URL=postgresql+psycopg://hex:hex@127.0.0.1:5432/hexgame \
-python -m uvicorn app.main:app --port 8000
+hexgame-server --port 8000
 ```
 
 By default, `HEX_DATABASE_AUTO_CREATE=1` creates the `completed_series` table on
@@ -195,7 +217,7 @@ cd frontend
 npm run build
 ```
 
-The production build writes to `app/static/overview/`. FastAPI serves the
+The production build writes to `src/hexgame/server/static/overview/`. FastAPI serves the
 landing page at `/`, the documentation page at `/docs`, the dashboard at
 `/overview`, the leaderboard at `/statistics`, and assets from
 `/overview/assets/...`.
@@ -569,7 +591,7 @@ messages, and any extra `player` field in a move payload is ignored.
 
 ## Gameplay Rules
 
-- The current `app/config.py` maps `PLAYER_1 = -1` and `PLAYER_2 = 1`.
+- The current `src/hexgame/server/config.py` maps `PLAYER_1 = -1` and `PLAYER_2 = 1`.
 - `player_1` (`-1`, red) moves first.
 - A game is one Hex board.
 - A series is best-of `1`, `3`, `5`, `7`, `9`, `11`, `13`, or `15` games
@@ -602,7 +624,7 @@ The server rejects moves when:
 
 When a player disconnects, the server keeps the slot, game board, series score,
 and seat assignment in memory for `RECONNECT_TIMEOUT_SECONDS` from
-`app/config.py`. The remaining player receives `opponent_disconnected` and the
+`src/hexgame/server/config.py`. The remaining player receives `opponent_disconnected` and the
 match is paused. During the pause, moves are rejected with
 `Game paused for reconnect`.
 
@@ -630,14 +652,14 @@ for smoke testing matchmaking, gameplay, and win detection.
 Run two clients in separate terminals:
 
 ```bash
-python -m examples.random_client --board-size 11 --seed 1
-python -m examples.random_client --board-size 11 --seed 2
+hexgame random --board-size 11 --seed 1
+hexgame random --board-size 11 --seed 2
 ```
 
 Useful options:
 
 ```bash
-python -m examples.random_client \
+hexgame random \
   --server wss://hexgame.codingdojo.ai \
   --board-size 11 \
   --series-length 3 \
@@ -648,28 +670,26 @@ python -m examples.random_client \
 There is also a helper script:
 
 ```bash
-bash examples/run_pair.sh
+bash src/hexgame/client/run_pair.sh
 ```
 
 ### Model Client
 
-`examples/hex_client.py` loads a model module dynamically. The module must
-export:
+`hexgame play` (module `hexgame.client.model_client`) loads a model module
+dynamically. The module must export:
 
 ```python
 def agent(board, action_set):
     ...
 ```
 
-The simplest way to add a model is to copy the random model and replace the
-logic inside `agent`:
+`--model-name NAME` is resolved by importing `hexgame.client.models.NAME`
+first, then falling back to a plain top-level `NAME` on `sys.path`. So you can
+use a bundled model, or just drop your own module in the directory you run
+`hexgame` from:
 
 ```bash
-cp examples/model_random.py examples/model_my_agent.py
-```
-
-```python
-# examples/model_my_agent.py
+# my_agent.py  (in your current working directory)
 from random import choice
 
 
@@ -679,12 +699,10 @@ def agent(board, action_set):
     return choice(list(action_set))
 ```
 
-After that, run it by passing the filename stem as `--model-name`:
-
 ```bash
-python -m examples.hex_client --model-name model_my_agent --board-size 7
-python -m examples.hex_client_gui --model-name model_my_agent --board-size 7
-python -m examples.hex_client --model-name model_my_agent --board-size 7 --server ws://localhost:8000
+hexgame play --model-name my_agent --board-size 7
+hexgame gui  --model-name my_agent --board-size 7
+hexgame play --model-name my_agent --board-size 7 --server ws://localhost:8000
 ```
 
 The model-facing board used by the WebSocket clients follows the server
@@ -705,7 +723,7 @@ order by mistake, the client stops with a clear model move error instead of
 sending an illegal move to the server.
 
 Model clients also export a small JSONL replay log by default under
-`examples/replays/`. The log records server messages, applied moves, model
+`replays/`. The log records server messages, applied moves, model
 choices, rejected moves, terminal events, and board snapshots around model
 decisions. Use `--replay-log off` to disable it or `--replay-log path.jsonl` to
 choose an explicit export path.
@@ -713,32 +731,38 @@ choose an explicit export path.
 Run two model clients:
 
 ```bash
-python -m examples.hex_client --model-name model_random --board-size 7 --series-length 1
-python -m examples.hex_client --model-name model_first --board-size 7 --series-length 1
+hexgame play --model-name model_random --board-size 7 --series-length 1
+hexgame play --model-name model_first --board-size 7 --series-length 1
 ```
 
 To keep the same slot after a completed series and wait for another opponent,
 add `--keep-slot`:
 
 ```bash
-python -m examples.hex_client --model-name model_alphazero --board-size 7 --keep-slot
+hexgame play --model-name model_alphazero --board-size 7 --keep-slot
 ```
 
 To join a specific waiting slot, add `--slot-id`. The client inherits the slot's
 board size and series length from the server:
 
 ```bash
-python -m examples.hex_client --model-name model_random --slot-id 3
+hexgame play --model-name model_random --slot-id 3
 ```
 
-Available example models include:
+Bundled example models (in `hexgame.client.models`):
 
 - `model_random`
 - `model_first`
 
+The repository's `examples/` directory holds heavier, optional ML models
+(`model_alphazero`, `model_dqn`, ...) plus their weights and a C++ MCTS
+extension. Those are not part of the installed package; run them from a repo
+checkout with `examples/` on `PYTHONPATH`.
+
 ### Pygame GUI Model Client
 
-`examples/hex_client_gui.py` is the graphical version of the model client. It
+`hexgame gui` (module `hexgame.client.gui_client`, needs the `[gui]` extra) is
+the graphical version of the model client. It
 opens a pygame window, draws the Hex board, updates stones as server moves
 arrive, highlights the last move, shows coordinate labels, displays model,
 slot, score, turn, move count, goal sides, and keeps the final board visible
@@ -748,7 +772,7 @@ blue/player_2 goal sides as top-bottom.
 Run it with:
 
 ```bash
-python -m examples.hex_client_gui \
+hexgame gui \
   --model-name model_random \
   --server wss://hexgame.codingdojo.ai \
   --board-size 7 \
@@ -764,7 +788,7 @@ To play as a human from the GUI, use `--model-name human`. When it is your
 turn, click an empty Hex cell to send the move:
 
 ```bash
-python -m examples.hex_client_gui --model-name human --board-size 7
+hexgame gui --model-name human --board-size 7
 ```
 
 To join a specific waiting slot from the GUI, add `--slot-id`. The GUI ignores
@@ -772,7 +796,7 @@ its local `--board-size` and `--series-length` for gameplay after joining and
 uses the settings reported by the server:
 
 ```bash
-python -m examples.hex_client_gui --model-name human --slot-id 3
+hexgame gui --model-name human --slot-id 3
 ```
 
 To keep the same slot after a completed series and wait for another opponent,
@@ -780,14 +804,17 @@ add `--keep-slot`. The server resets the series score, keeps the player as
 `player_1` in that slot, and moves the slot back to `waiting`:
 
 ```bash
-python -m examples.hex_client_gui --model-name human --board-size 7 --keep-slot
+hexgame gui --model-name human --board-size 7 --keep-slot
 ```
 
 ## Tests
 
-Run all backend tests:
+Install the dev + optional dependencies, then run pytest from the repo root
+(`pyproject.toml` puts `src/` on the path, so no install is strictly required,
+but the database/redis tests need those extras):
 
 ```bash
+python -m pip install -e ".[dev,all]"
 python -m pytest
 ```
 
@@ -812,41 +839,49 @@ The current test suite covers:
 ## Project Layout
 
 ```text
-app/
-  main.py                FastAPI routes and global SlotManager
-  config.py              Slot, board-size, protocol, and player constants
-  models.py              GameSlot, PlayerConnection, SlotAssignment, HexGameState
-  protocol.py            Message parsing and message factories
-  slots.py               SlotManager and slot lifecycle
-  redis_slots.py         Optional Redis-backed SlotManager
-  database.py            SQLAlchemy ORM models and completed-series repository
-  game.py                Move validation and win detection
-  websocket_manager.py   WebSocket receive loop and gameplay handling
-  static/overview/       Built Vite dashboard
+pyproject.toml             Package metadata, dependencies, console entry points
+MANIFEST.in                Extra files to include in the source distribution
+
+src/hexgame/
+  server/                  -> console command: hexgame-server
+    __main__.py            CLI wrapper around uvicorn (hexgame.server.main:app)
+    main.py                FastAPI routes and global SlotManager
+    config.py              Slot, board-size, protocol, and player constants
+    models.py              GameSlot, PlayerConnection, SlotAssignment, HexGameState
+    protocol.py            Message parsing and message factories
+    slots.py               SlotManager and slot lifecycle
+    redis_slots.py         Optional Redis-backed SlotManager
+    database.py            SQLAlchemy ORM models and completed-series repository
+    game.py                Move validation and win detection
+    websocket_manager.py   WebSocket receive loop and gameplay handling
+    static/overview/       Built Vite dashboard (shipped in the wheel)
+  client/                  -> console command: hexgame {random,play,gui}
+    __main__.py            Subcommand dispatcher
+    random_client.py       Random-move client          (hexgame random)
+    model_client.py        Model-driven client         (hexgame play)
+    gui_client.py          Pygame model/human client   (hexgame gui, [gui] extra)
+    client_safety.py       Model-output validation and JSONL replay logging
+    hex_engine.py          Local Hex engine used by ML models
+    models/                Bundled example model agents (model_random, model_first)
+    run_pair.sh            Launches two random clients against a local server
 
 frontend/
-  src/                   Vite React overview source
-  package.json           Frontend scripts and dependencies
+  src/                     Vite React overview source
+  vite.config.ts           Builds into src/hexgame/server/static/overview/
 
-examples/
-  random_client.py       Simple random WebSocket client
-  hex_client.py          Model-driven WebSocket client
-  hex_client_gui.py      Pygame model client with graphical board output
-  hex_engine.py          Local Hex engine used by ML models
-  model_*.py             Example model agents
-  setup_mcts.py          Optional C++ MCTS extension build script
-  run_pair.sh            Launches two random clients
+examples/                  Heavy/optional ML extras (not part of the package):
+  model_alphazero.py, model_dqn*.py, *.pt weights, hex_mcts.cpp, setup_mcts.py
 
 tests/
-  test_*.py              Unit and integration tests
+  test_*.py                Unit and integration tests
 ```
 
 ## Operational Notes
 
 - The default `memory` backend is single-process only.
-- Use `HEX_STATE_BACKEND=redis` before running multiple Uvicorn workers. Redis
-  stores shared slot/game/session state, while WebSocket connections remain
-  attached to the worker that accepted them.
+- Set `HEX_STATE_BACKEND=redis` before running `hexgame-server --workers N`
+  (N > 1). Redis stores shared slot/game/session state, while WebSocket
+  connections remain attached to the worker that accepted them.
 - `/overview` is an operational/debug dashboard. Protect or disable it before
   exposing this service beyond a trusted local network.
 - On disconnect, the slot is held for the reconnect timeout. Clients using
@@ -868,11 +903,12 @@ The built `index.html` must reference assets under `/overview/assets/...`.
 
 ### Random client gets HTTP 404
 
-Install backend requirements and restart Uvicorn:
+Reinstall the package (so `uvicorn[standard]`/`websockets` are present) and
+restart the server:
 
 ```bash
-python -m pip install -r requirements.txt
-python -m uvicorn app.main:app --port 8000
+python -m pip install -e ".[dev,all]"
+hexgame-server --port 8000
 ```
 
 This usually means the server was started before WebSocket support was

@@ -5,7 +5,7 @@ COPY frontend/package.json frontend/package-lock.json ./frontend/
 RUN cd frontend && npm ci
 
 COPY frontend ./frontend
-RUN mkdir -p /build/app/static && cd frontend && npm run build
+RUN mkdir -p /build/src/hexgame/server/static && cd frontend && npm run build
 
 
 FROM python:3.12-slim AS runtime
@@ -18,15 +18,17 @@ WORKDIR /app
 
 RUN useradd --create-home --shell /usr/sbin/nologin hexgame
 
-COPY requirements.txt .
+# Install the package (with redis + postgres extras) from source.
+# The frontend bundle is built in the node stage and copied in, so the
+# setup.py build hook must not try to run npm here (no Node in this stage).
+COPY pyproject.toml setup.py README.md PLAN.md ./
+COPY src ./src
+COPY --from=overview-build /build/src/hexgame/server/static/overview ./src/hexgame/server/static/overview
 RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir -r requirements.txt
-
-COPY app ./app
-COPY --from=overview-build /build/app/static/overview ./app/static/overview
+    && HEXGAME_SKIP_FRONTEND_BUILD=1 python -m pip install --no-cache-dir ".[redis,postgres]"
 
 USER hexgame
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["hexgame-server", "--host", "0.0.0.0", "--port", "8000"]

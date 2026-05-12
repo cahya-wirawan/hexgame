@@ -10,13 +10,7 @@ frontend/.vite
 frontend/dist
 frontend/tsconfig.tsbuildinfo
 
-app/static/overview
+src/hexgame/server/static/overview
 
-examples/replays
-examples/examples
-examples/*.pt
-examples/*.so
-examples/build
-
+examples
 tests
-src

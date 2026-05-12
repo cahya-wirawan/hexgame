@@ -1,8 +1,8 @@
 import asyncio
 
-from app.config import PLAYER_1, PLAYER_2
-from app.redis_slots import RedisSlotManager
-from app.slots import SlotManager
+from hexgame.server.config import PLAYER_1, PLAYER_2
+from hexgame.server.redis_slots import RedisSlotManager
+from hexgame.server.slots import SlotManager
 
 
 def run(coro):

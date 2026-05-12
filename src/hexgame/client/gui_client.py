@@ -11,10 +11,14 @@ from urllib.parse import urlencode
 import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
-try:
-    from examples.client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, board_for_model, model_move_to_payload
-except ModuleNotFoundError:
-    from client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, board_for_model, model_move_to_payload
+from hexgame.client.client_safety import (
+    InvalidModelMove,
+    MatchReplayLog,
+    apply_server_move,
+    board_for_model,
+    model_move_to_payload,
+)
+from hexgame.client.model_client import load_model
 
 MODEL_TO_COLOR = {
     -1: "red",
@@ -342,7 +346,7 @@ async def run(
     keep_slot: bool,
 ) -> None:
     human_mode = model_name.lower() in {"human", "manual", "mouse"}
-    model = None if human_mode else importlib.import_module(model_name)
+    model = None if human_mode else load_model(model_name)
     agent = None if human_mode else getattr(model, "agent")
     player_label = "human" if human_mode else model_name
     replay = MatchReplayLog.create(
@@ -749,8 +753,8 @@ async def run(
         ) from exc
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="hexgame gui", description="Pygame GUI Hex client (model or human).")
     parser.add_argument("--server", default="wss://hexgame.codingdojo.ai")
     parser.add_argument("--board-size", type=int, default=11)
     parser.add_argument("--series-length", type=int, default=1)
@@ -766,14 +770,14 @@ def main() -> None:
     parser.add_argument(
         "--replay-log",
         default="auto",
-        help="Path for JSONL replay export, 'auto' for examples/replays, or 'off' to disable.",
+        help="Path for JSONL replay export, 'auto' for ./replays, or 'off' to disable.",
     )
     parser.add_argument(
         "--keep-slot",
         action="store_true",
         help="After a completed series, keep this connection in the same slot and wait for another match.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     asyncio.run(
         run(
             args.model_name,

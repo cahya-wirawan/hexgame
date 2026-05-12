@@ -107,7 +107,8 @@ def frontend_index():
         return HTMLResponse(OVERVIEW_INDEX.read_text(encoding="utf-8"))
     return HTMLResponse(
         "<!doctype html><title>Hex Game Server</title><h1>Hex Game Server</h1>"
-        "<p>Build the frontend to generate app/static/overview/index.html.</p>"
+        "<p>Build the frontend to generate "
+        "src/hexgame/server/static/overview/index.html.</p>"
     )
 
 

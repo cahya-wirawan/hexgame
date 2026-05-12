@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from app.config import MAX_SLOTS, PLAYER_1, PLAYER_2
-from app.main import app
+from hexgame.server.config import MAX_SLOTS, PLAYER_1, PLAYER_2
+from hexgame.server.main import app
 
 
 def test_health_slots_landing_docs_and_overview():

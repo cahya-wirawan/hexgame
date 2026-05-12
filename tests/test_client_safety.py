@@ -1,6 +1,6 @@
 import pytest
 
-from examples.client_safety import (
+from hexgame.client.client_safety import (
     InvalidModelMove,
     MatchReplayLog,
     apply_server_move,
@@ -127,11 +127,11 @@ def test_match_replay_log_writes_json_lines(tmp_path):
     )
 
 
-def test_match_replay_log_auto_uses_examples_replays_directory():
+def test_match_replay_log_auto_uses_replays_directory():
     replay = MatchReplayLog.create("auto", model_name="model_first", board_size=7, series_length=3)
 
     assert replay.path is not None
-    assert replay.path.parent.as_posix() == "examples/replays"
+    assert replay.path.parent.as_posix() == "replays"
     assert "model_first_7x7_bo3" in replay.path.name
 
 

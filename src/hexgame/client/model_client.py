@@ -11,10 +11,13 @@ from urllib.parse import urlencode
 import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
-try:
-    from examples.client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, board_for_model, model_move_to_payload
-except ModuleNotFoundError:
-    from client_safety import InvalidModelMove, MatchReplayLog, apply_server_move, board_for_model, model_move_to_payload
+from hexgame.client.client_safety import (
+    InvalidModelMove,
+    MatchReplayLog,
+    apply_server_move,
+    board_for_model,
+    model_move_to_payload,
+)
 
 MODEL_TO_COLOR = {
     -1: "red",
@@ -36,11 +39,16 @@ CELL_SYMBOLS = {
 def public_query(params: dict[str, object | None]) -> str:
     return urlencode({key: value for key, value in params.items() if value is not None})
 
-module_name = "model_random"
-function_name = "agent"
 
-module = importlib.import_module(module_name)
-agent = getattr(module, function_name)
+def load_model(model_name: str):
+    """Resolve ``--model-name``: try ``hexgame.client.models.<name>`` first,
+    then fall back to a plain top-level ``<name>`` on ``sys.path`` (so users can
+    point at their own model module in the current directory)."""
+    try:
+        return importlib.import_module(f"hexgame.client.models.{model_name}")
+    except ModuleNotFoundError:
+        return importlib.import_module(model_name)
+
 
 def empty_cells(board: list[list[int | None]]) -> list[tuple[int, int]]:
     return [
@@ -77,7 +85,7 @@ async def run(
     replay_log: str,
     keep_slot: bool,
 ) -> None:
-    model = importlib.import_module(model_name)
+    model = load_model(model_name)
     agent = getattr(model, "agent")
     replay = MatchReplayLog.create(
         replay_log,
@@ -246,8 +254,8 @@ async def run(
         ) from exc
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="hexgame play", description="Model-driven Hex client.")
     parser.add_argument("--server", default="wss://hexgame.codingdojo.ai")
     parser.add_argument("--board-size", type=int, default=11)
     parser.add_argument("--series-length", type=int, default=1)
@@ -263,14 +271,14 @@ def main() -> None:
     parser.add_argument(
         "--replay-log",
         default="auto",
-        help="Path for JSONL replay export, 'auto' for examples/replays, or 'off' to disable.",
+        help="Path for JSONL replay export, 'auto' for ./replays, or 'off' to disable.",
     )
     parser.add_argument(
         "--keep-slot",
         action="store_true",
         help="After a completed series, keep this connection in the same slot and wait for another match.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     asyncio.run(
         run(
             args.model_name,

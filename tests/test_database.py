@@ -2,8 +2,8 @@ import asyncio
 
 from sqlalchemy import text
 
-from app.config import PLAYER_1, PLAYER_2
-from app.database import CompletedSeries, DatabaseMatchRepository
+from hexgame.server.config import PLAYER_1, PLAYER_2
+from hexgame.server.database import CompletedSeries, DatabaseMatchRepository
 
 
 def run(coro):

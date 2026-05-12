@@ -77,14 +77,14 @@ async def run(server: str, board_size: int, series_length: int, seed: int | None
         ) from exc
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="hexgame random", description="Hex client that plays uniformly random legal moves.")
     parser.add_argument("--server", default="ws://127.0.0.1:8000")
     parser.add_argument("--board-size", type=int, default=11)
     parser.add_argument("--series-length", type=int, default=1)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--move-delay", type=float, default=0.1)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     asyncio.run(run(args.server, args.board_size, args.series_length, args.seed, args.move_delay))
 
 

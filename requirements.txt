@@ -1,10 +1,8 @@
-fastapi>=0.95,<0.100
-uvicorn[standard]>=0.22,<0.23
-pytest>=7,<8
-pytest-asyncio>=0.21,<0.22
-httpx>=0.24,<0.25
-websockets>=11,<12
-pygame>=2.5,<3
-redis>=4.5,<6
-sqlalchemy>=2,<3
-psycopg[binary]>=3,<4
+# Convenience installer for local development.
+# Installs the hexgame package in editable mode with every optional backend
+# (redis, postgres, gui) plus the test tools.
+#
+#   python -m pip install -r requirements.txt
+#
+# Equivalent to:  python -m pip install -e ".[all,dev]"
+-e .[all,dev]

@@ -1,7 +1,7 @@
 import asyncio
 
-from app.config import PLAYER_1, PLAYER_2
-from app.slots import SlotManager
+from hexgame.server.config import PLAYER_1, PLAYER_2
+from hexgame.server.slots import SlotManager
 
 
 def run(coro):

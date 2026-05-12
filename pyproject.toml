@@ -40,7 +40,7 @@ hexgame = "hexgame.client.__main__:main"
 
 [project.urls]
 Homepage = "https://hexgame.codingdojo.ai"
-Source = "https://github.com/cahya-wirawan/hexgame-server"
+Source = "https://github.com/cahya-wirawan/hexgame"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

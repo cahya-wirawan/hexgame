@@ -60,6 +60,7 @@ def load_model(model_name: str):
     — it propagates with its original message so the real cause is visible.
     """
     import importlib.util
+    import sys
     from pathlib import Path
 
     # 1. Filesystem path.
@@ -69,11 +70,24 @@ def load_model(model_name: str):
             raise ModuleNotFoundError(
                 f"--model-name {model_name!r}: file not found at {path}"
             )
+        # Make sibling imports in the same directory work
+        # (e.g. examples/model_dqn_mcts.py does `import model_dqn`,
+        # expecting examples/model_dqn.py next to it).
+        parent = str(path.parent)
+        if parent not in sys.path:
+            sys.path.insert(0, parent)
         spec = importlib.util.spec_from_file_location(path.stem, path)
         if spec is None or spec.loader is None:
             raise ImportError(f"Cannot create module spec for {path}")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)  # transitive ImportErrors propagate as-is
+        # Register before exec so the module can be re-entered through its own
+        # name (and so sibling imports that loop back resolve to this object).
+        sys.modules[path.stem] = module
+        try:
+            spec.loader.exec_module(module)  # transitive ImportErrors propagate as-is
+        except BaseException:
+            sys.modules.pop(path.stem, None)
+            raise
         return module
 
     # 2-4. Importable names, tried in order.

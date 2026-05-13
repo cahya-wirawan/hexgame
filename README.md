@@ -20,7 +20,11 @@ The current implementation covers Phases 1-7 from `PLAN.md`:
 - `/` project landing page, `/docs` usage guide, `/overview` monitoring page,
   and `/statistics` model leaderboard.
 - Model-driven clients, including a pygame GUI client for visual board output.
-- Reconnect tokens and `/ws/reconnect` support for temporary network drops.
+- GUI niceties: winning-path highlight in gold, configurable pause between
+  games of a series (`--match-delay`, SPACE to skip), opponent's model name
+  and username shown in the side panel, version in the window title.
+- Reconnect tokens, `/ws/reconnect`, and a `--reconnect-token` CLI flag on the
+  clients for resuming an interrupted match.
 - Optional Redis-backed slot, game, session, and reconnect-token state.
 - Optional PostgreSQL/SQLAlchemy completed-series history.
 
@@ -460,11 +464,21 @@ short-lived secret: it proves ownership of the reserved seat.
       "connected_players": [-1, 1],
       "disconnected_players": [],
       "current_turn": -1,
-      "move_count": 8
+      "move_count": 8,
+      "board": [[0, -1]],
+      "player_models": {"-1": "model_alphazero", "1": "human"},
+      "player_usernames": {"-1": "alice", "1": "bob"},
+      "current_game_number": 1,
+      "player_1_wins": 0,
+      "player_2_wins": 0,
+      "wins_required": 2
     }
   }
 }
 ```
+
+The reference clients use `player_models` / `player_usernames` from this
+snapshot to restore the **Opponent** label after a reconnect.
 
 `waiting_for_opponent`
 
@@ -492,10 +506,18 @@ short-lived secret: it proves ownership of the reserved seat.
     "current_game_number": 1,
     "player_1_wins": 0,
     "player_2_wins": 0,
-    "wins_required": 2
+    "wins_required": 2,
+    "player_models": {"-1": "model_alphazero", "1": "human"},
+    "player_usernames": {"-1": "alice", "1": "bob"}
   }
 }
 ```
+
+`player_models` and `player_usernames` are keyed by string player IDs (`"-1"`
+and `"1"`). Empty objects (`{}`) mean the players are anonymous. Clients
+should not assume both keys are present — match a side by its string key and
+fall back to `None`. This payload is sent both at series start and at the
+start of each subsequent game in a multi-game series.
 
 `move`
 
@@ -622,22 +644,51 @@ The server rejects moves when:
 
 ## Reconnect Behavior
 
-When a player disconnects, the server keeps the slot, game board, series score,
-and seat assignment in memory for `RECONNECT_TIMEOUT_SECONDS` from
-`src/hexgame/server/config.py`. The remaining player receives `opponent_disconnected` and the
-match is paused. During the pause, moves are rejected with
-`Game paused for reconnect`.
+When a player disconnects, the server keeps the slot, game board, series
+score, and seat assignment in memory for `RECONNECT_TIMEOUT_SECONDS` from
+`src/hexgame/server/config.py`. The remaining player receives
+`opponent_disconnected` and the match is paused. During the pause, moves are
+rejected with `Game paused for reconnect`.
 
-The disconnected client reconnects with:
+### Getting the token
+
+When a client connects via `/ws/matchmake` or `/ws/join-slot`, the server's
+`joined` payload includes a `reconnect_token` that's specific to that seat.
+Both reference clients (`hexgame play` and `hexgame gui`) print it to stdout
+on first join:
 
 ```text
-ws://127.0.0.1:8000/ws/reconnect?slot_id=1&token=<reconnect_token>
+reconnect: slot 3 token a1b2c3d4e5
 ```
 
-If the token is valid and the timeout has not expired, the server sends
-`reconnected` with the current public slot snapshot and notifies the opponent
-with `opponent_reconnected`. If the timeout expires first, the slot is reset and
-the remaining player is notified and closed.
+The token is also written to the JSONL replay log next to the `joined` event.
+Treat it like a short-lived secret — it's never exposed by `/slots` or the
+overview dashboard.
+
+### Reconnecting
+
+Either CLI flag form works:
+
+```bash
+hexgame play --slot-id 3 --reconnect-token a1b2c3d4e5
+hexgame gui  --slot-id 3 --reconnect-token a1b2c3d4e5
+```
+
+Both route to `/ws/reconnect?slot_id=3&token=a1b2c3d4e5`. The raw URL also
+works for custom clients:
+
+```text
+ws://127.0.0.1:8000/ws/reconnect?slot_id=3&token=a1b2c3d4e5
+```
+
+If the token is valid and the reconnect timeout has not expired, the server
+sends `reconnected` with the current public slot snapshot (board, current
+turn, score, `player_models`, `player_usernames`) and notifies the opponent
+with `opponent_reconnected`. The GUI restores the full game state — including
+the opponent panel row — from that snapshot. If the timeout expires first, the
+slot is reset and the remaining player is notified and closed.
+
+`--reconnect-token` without `--slot-id` is rejected with a clear error.
 
 ## Clients
 
@@ -683,12 +734,25 @@ def agent(board, action_set):
     ...
 ```
 
-`--model-name NAME` is resolved by importing `hexgame.client.models.NAME`
-first, then falling back to a plain top-level `NAME` on `sys.path`. So you can
-use a bundled model, or just drop your own module in the directory you run
-`hexgame` from:
+`--model-name` accepts any of four forms, resolved in this order:
 
-```bash
+1. A **filesystem path** (`./examples/model_dqn.py`, `/abs/path.py`, or any
+   value containing `/` or ending in `.py`). Loaded directly with
+   `importlib.util`, so no `sys.path` / `PYTHONPATH` setup is needed. This is
+   the most reliable form for unpackaged models.
+2. A **bundled model** name: `hexgame.client.models.<NAME>` — currently
+   `model_random` and `model_first`.
+3. A **top-level module** name on `sys.path` — drop `my_agent.py` in your
+   working directory and pass `--model-name my_agent`.
+4. `examples.<NAME>` — convenience fallback for repo checkouts run from the
+   project root with `PYTHONPATH=.`, so `--model-name model_dqn` finds
+   `examples/model_dqn.py`.
+
+A `ModuleNotFoundError` raised *inside* a resolved module (e.g. a missing
+`torch` import in the model file) is **not** swallowed — it propagates with
+its original message so the real cause is visible.
+
+```python
 # my_agent.py  (in your current working directory)
 from random import choice
 
@@ -702,7 +766,8 @@ def agent(board, action_set):
 ```bash
 hexgame play --model-name my_agent --board-size 7
 hexgame gui  --model-name my_agent --board-size 7
-hexgame play --model-name my_agent --board-size 7 --server ws://localhost:8000
+hexgame play --model-name ./my_agent.py --board-size 7      # explicit file path
+hexgame play --model-name my_agent --server ws://localhost:8000
 ```
 
 The model-facing board used by the WebSocket clients follows the server
@@ -749,6 +814,19 @@ board size and series length from the server:
 hexgame play --model-name model_random --slot-id 3
 ```
 
+To **resume an interrupted match**, pass `--slot-id` together with
+`--reconnect-token`. The token is printed to stdout on the first `joined`
+message (look for a line like `reconnect: slot 3 token a1b2c3d4e5`) and is
+also recorded in the replay log:
+
+```bash
+hexgame play --slot-id 3 --reconnect-token a1b2c3d4e5
+```
+
+The combination routes to `/ws/reconnect?slot_id=...&token=...` instead of the
+normal matchmaking endpoint. `--reconnect-token` without `--slot-id` is
+rejected with a clear error.
+
 Bundled example models (in `hexgame.client.models`):
 
 - `model_random`
@@ -762,12 +840,28 @@ checkout with `examples/` on `PYTHONPATH`.
 ### Pygame GUI Model Client
 
 `hexgame gui` (module `hexgame.client.gui_client`, needs the `[gui]` extra) is
-the graphical version of the model client. It
-opens a pygame window, draws the Hex board, updates stones as server moves
-arrive, highlights the last move, shows coordinate labels, displays model,
-slot, score, turn, move count, goal sides, and keeps the final board visible
-when the series ends. The GUI marks red/player_1 goal sides as left-right and
-blue/player_2 goal sides as top-bottom.
+the graphical version of the model client. The window title shows the package
+version (`Hex Client v<version>`). The side panel shows:
+
+- **Status** — current state / countdown
+- **Model** — your model name
+- **Opponent** — the opposing player's `model_name` and `username`
+  (server-supplied via the `game_start` / `reconnected` payload)
+- **Slot**, **Game**, **Score**, **Moves**, **Replay**
+- **Players** rows for `player_1` (red, left↔right) and `player_2` (blue,
+  top↔bottom), with a chip on the side whose turn it is
+- **Last move** coordinates
+
+On the board, the last move gets a yellow ring, and when a game ends the
+**winning path** is highlighted with a thick gold border on the cells that
+connect the two goal edges (computed locally with the same BFS the server
+uses).
+
+When playing a multi-game series, the GUI **pauses on the final board between
+games** so you can see the result before it resets. The pause is
+`--match-delay` seconds (default `3.0`, set to `0` to disable) and the status
+line counts down (`"Next match in 1.7s — SPACE to skip"`). Press **SPACE** at
+any time to skip ahead.
 
 Run it with:
 
@@ -777,12 +871,14 @@ hexgame gui \
   --server wss://hexgame.codingdojo.ai \
   --board-size 7 \
   --series-length 3 \
+  --match-delay 3 \
   --seed 42 \
   --move-delay 0.1 \
   --replay-log auto
 ```
 
-Close the GUI with `Esc`, `Q`, or the window close button.
+Close the GUI with `Esc`, `Q`, or the window close button. Press **SPACE**
+during an inter-match pause to start the next game immediately.
 
 To play as a human from the GUI, use `--model-name human`. When it is your
 turn, click an empty Hex cell to send the move:
@@ -805,6 +901,16 @@ add `--keep-slot`. The server resets the series score, keeps the player as
 
 ```bash
 hexgame gui --model-name human --board-size 7 --keep-slot
+```
+
+To **resume an interrupted match**, the GUI accepts the same
+`--slot-id` + `--reconnect-token` combination as `hexgame play`. The token is
+printed to stdout on the first `joined` message and recorded in the replay
+log; on reconnect the GUI restores the full board, turn, score, and opponent
+label from the server's snapshot:
+
+```bash
+hexgame gui --slot-id 3 --reconnect-token a1b2c3d4e5
 ```
 
 ## Tests

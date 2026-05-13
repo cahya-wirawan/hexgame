@@ -139,6 +139,7 @@ async def run(
     move_delay: float,
     replay_log: str,
     keep_slot: bool,
+    reconnect_token: str | None = None,
 ) -> None:
     model = load_model(model_name)
     agent = getattr(model, "agent")
@@ -149,7 +150,15 @@ async def run(
         series_length=series_length,
     )
 
-    if slot_id is None:
+    if reconnect_token is not None:
+        if slot_id is None:
+            raise SystemExit("--reconnect-token requires --slot-id (the slot the token belongs to).")
+        query = public_query({
+            "slot_id": slot_id,
+            "token": reconnect_token,
+        })
+        uri = f"{server.rstrip('/')}/ws/reconnect?{query}"
+    elif slot_id is None:
         query = public_query({
             "board_size": board_size,
             "series_length": series_length,
@@ -199,6 +208,14 @@ async def run(
                         board_size = server_board_size
                         board = [[0 for _ in range(board_size)] for _ in range(board_size)]
                     series_length = payload.get("series_length", series_length)
+                    # Surface the reconnect token so the user can copy it for a
+                    # future `hexgame play --slot-id N --reconnect-token TOKEN`.
+                    issued_token = payload.get("reconnect_token")
+                    if issued_token:
+                        print(
+                            f"reconnect: slot {payload.get('slot_id')} token {issued_token}",
+                            flush=True,
+                        )
                     replay.record(
                         "joined",
                         player=player_id,
@@ -333,6 +350,13 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="After a completed series, keep this connection in the same slot and wait for another match.",
     )
+    parser.add_argument(
+        "--reconnect-token",
+        type=str,
+        help="Resume an in-progress match via /ws/reconnect. Requires --slot-id. "
+             "The token is printed to stdout (and recorded in the replay log) on `joined` "
+             "the first time you connect.",
+    )
     args = parser.parse_args(argv)
     asyncio.run(
         run(
@@ -346,6 +370,7 @@ def main(argv: list[str] | None = None) -> None:
             args.move_delay,
             args.replay_log,
             args.keep_slot,
+            args.reconnect_token,
         )
     )
 

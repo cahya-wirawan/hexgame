@@ -45,6 +45,25 @@ def empty_cells(board: list[list[int | None]]) -> list[tuple[int, int]]:
     ]
 
 
+def opponent_label_from(
+    player_id: int | None,
+    player_models: dict[str, Any] | None,
+    player_usernames: dict[str, Any] | None,
+) -> str | None:
+    """Build the GUI's "Opponent" label from the server's player_models /
+    player_usernames maps (keys arrive as JSON strings: '-1' / '1').
+    Returns ``None`` if the opponent is anonymous or the side hasn't joined yet.
+    """
+    if player_id is None:
+        return None
+    opp_key = str(-player_id)
+    opp_model = (player_models or {}).get(opp_key)
+    opp_user = (player_usernames or {}).get(opp_key)
+    if opp_model and opp_user:
+        return f"{opp_model} ({opp_user})"
+    return opp_model or opp_user or None
+
+
 # Hex neighbour offsets, identical to the server (hexgame.server.game.DIRECTIONS).
 _HEX_DIRECTIONS = [(+1, 0), (-1, 0), (0, +1), (0, -1), (+1, -1), (-1, +1)]
 
@@ -440,6 +459,7 @@ async def run(
     replay_log: str,
     keep_slot: bool,
     match_delay: float = 3.0,
+    reconnect_token: str | None = None,
 ) -> None:
     human_mode = model_name.lower() in {"human", "manual", "mouse"}
     model = None if human_mode else load_model(model_name)
@@ -453,7 +473,15 @@ async def run(
     )
     replay_path = str(replay.path) if replay.path is not None else None
 
-    if slot_id is None:
+    if reconnect_token is not None:
+        if slot_id is None:
+            raise SystemExit("--reconnect-token requires --slot-id (the slot the token belongs to).")
+        query = public_query({
+            'slot_id': slot_id,
+            'token': reconnect_token,
+        })
+        uri = f"{server.rstrip('/')}/ws/reconnect?{query}"
+    elif slot_id is None:
         query = public_query({
             'board_size': board_size,
             'series_length': series_length,
@@ -588,6 +616,14 @@ async def run(
                         viewer.pygame.quit()
                         viewer = HexBoardViewer(board_size)
                     series_length = server_series_length
+                    # Print the reconnect token so the user can copy it for a future
+                    # `hexgame gui --slot-id N --reconnect-token TOKEN` session.
+                    issued_token = payload.get("reconnect_token")
+                    if issued_token:
+                        print(
+                            f"reconnect: slot {assigned_slot_id} token {issued_token}",
+                            flush=True,
+                        )
                     replay.record(
                         "joined",
                         player=player_id,
@@ -618,8 +654,47 @@ async def run(
                     last_move = None
                     last_move_player = None
                     pending_move = False
+                    opponent_label = None
                     replay.record("slot_kept", payload=payload)
                     status = f"Kept slot {assigned_slot_id}"
+                elif message_type == "reconnected":
+                    # Restore client state from the slot snapshot the server sends back.
+                    player_id = payload["player"]
+                    assigned_slot_id = payload.get("slot_id", assigned_slot_id)
+                    server_board_size = payload.get("board_size", board_size)
+                    if server_board_size != board_size:
+                        board_size = server_board_size
+                        viewer.pygame.quit()
+                        viewer = HexBoardViewer(board_size)
+                    series_length = payload.get("series_length", series_length)
+                    snapshot = payload.get("slot") or {}
+                    snapshot_board = snapshot.get("board")
+                    if (
+                        isinstance(snapshot_board, list)
+                        and len(snapshot_board) == board_size
+                        and all(isinstance(row, list) and len(row) == board_size for row in snapshot_board)
+                    ):
+                        board = [[cell if cell in (-1, 0, 1) else 0 for cell in row] for row in snapshot_board]
+                    else:
+                        board = [[0 for _ in range(board_size)] for _ in range(board_size)]
+                    current_turn = snapshot.get("current_turn")
+                    move_count = snapshot.get("move_count", 0) or 0
+                    current_game_number = snapshot.get("current_game_number", current_game_number)
+                    score = (
+                        snapshot.get("player_1_wins", score[0]) or 0,
+                        snapshot.get("player_2_wins", score[1]) or 0,
+                    )
+                    last_move = None
+                    last_move_player = None
+                    winning_path = None
+                    pending_move = False
+                    opponent_label = opponent_label_from(
+                        player_id,
+                        snapshot.get("player_models"),
+                        snapshot.get("player_usernames"),
+                    )
+                    replay.record("reconnected", payload=payload, opponent_label=opponent_label)
+                    status = f"Reconnected to slot {assigned_slot_id}"
                 elif message_type == "game_start":
                     # Between games of a series: hold on the previous game's
                     # final board (with the winner's path highlighted) for
@@ -668,22 +743,11 @@ async def run(
                     last_move = None
                     last_move_player = None
                     winning_path = None
-                    # Build "Opponent" label from server-supplied player_models / player_usernames.
-                    # Keys arrive as strings ("-1" / "1") in JSON.
-                    if player_id is not None:
-                        opponent_id = -player_id
-                        player_models = payload.get("player_models") or {}
-                        player_usernames = payload.get("player_usernames") or {}
-                        opp_model = player_models.get(str(opponent_id))
-                        opp_user = player_usernames.get(str(opponent_id))
-                        if opp_model and opp_user:
-                            opponent_label = f"{opp_model} ({opp_user})"
-                        elif opp_model:
-                            opponent_label = opp_model
-                        elif opp_user:
-                            opponent_label = opp_user
-                        else:
-                            opponent_label = None
+                    opponent_label = opponent_label_from(
+                        player_id,
+                        payload.get("player_models"),
+                        payload.get("player_usernames"),
+                    )
                     replay.record("game_start", payload=payload, opponent_label=opponent_label)
                     status = "Game started"
                 elif message_type == "move":
@@ -971,6 +1035,13 @@ def main(argv: list[str] | None = None) -> None:
         help="Seconds to hold the final board (with the winner's path highlighted) "
              "between games of a series. Press SPACE to skip. Default: 3.0; set to 0 to disable.",
     )
+    parser.add_argument(
+        "--reconnect-token",
+        type=str,
+        help="Resume an in-progress match via /ws/reconnect. Requires --slot-id. "
+             "The token is printed to stdout (and recorded in the replay log) on `joined` "
+             "the first time you connect.",
+    )
     args = parser.parse_args(argv)
     asyncio.run(
         run(
@@ -985,6 +1056,7 @@ def main(argv: list[str] | None = None) -> None:
             args.replay_log,
             args.keep_slot,
             args.match_delay,
+            args.reconnect_token,
         )
     )
 

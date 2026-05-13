@@ -7,6 +7,9 @@ to ``python -m uvicorn hexgame.server.main:app`` with a few common flags.
 from __future__ import annotations
 
 import argparse
+import logging
+
+from hexgame import __version__
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -25,6 +28,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--reload", action="store_true", help="auto-reload on code changes (development)")
     parser.add_argument("--log-level", default="info", help="uvicorn log level (default: info)")
     args = parser.parse_args(argv)
+
+    # Plain stdout banner, so the version is visible even before uvicorn
+    # configures its loggers (mirrors the `hexgame` client banner).
+    print(f"hexgame-server {__version__} starting on {args.host}:{args.port}", flush=True)
+    # Also emit through the uvicorn logger so it shows up in log aggregators.
+    logging.getLogger("uvicorn").info("hexgame-server %s ready on %s:%d", __version__, args.host, args.port)
 
     import uvicorn
 

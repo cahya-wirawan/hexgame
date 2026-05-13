@@ -105,6 +105,8 @@ def game_start(
     player_1_wins: int,
     player_2_wins: int,
     wins_required: int,
+    player_models: dict[str, str | None] | None = None,
+    player_usernames: dict[str, str | None] | None = None,
 ) -> dict[str, Any]:
     return message(
         "game_start",
@@ -118,6 +120,8 @@ def game_start(
             "player_1_wins": player_1_wins,
             "player_2_wins": player_2_wins,
             "wins_required": wins_required,
+            "player_models": player_models or {},
+            "player_usernames": player_usernames or {},
         },
     )
 

@@ -41,13 +41,68 @@ def public_query(params: dict[str, object | None]) -> str:
 
 
 def load_model(model_name: str):
-    """Resolve ``--model-name``: try ``hexgame.client.models.<name>`` first,
-    then fall back to a plain top-level ``<name>`` on ``sys.path`` (so users can
-    point at their own model module in the current directory)."""
-    try:
-        return importlib.import_module(f"hexgame.client.models.{model_name}")
-    except ModuleNotFoundError:
-        return importlib.import_module(model_name)
+    """Resolve ``--model-name`` to a loaded Python module exposing ``agent``.
+
+    Resolution order:
+
+      1. If ``model_name`` looks like a file path (contains ``/`` or ends in
+         ``.py``), load that file directly with :mod:`importlib.util`. This
+         sidesteps ``sys.path`` entirely — handy for the unpackaged
+         ``examples/`` models in a repo checkout.
+      2. ``hexgame.client.models.<model_name>`` — the bundled example models.
+      3. ``<model_name>`` — a top-level package/module on ``sys.path``.
+      4. ``examples.<model_name>`` — convenience for repo checkouts run from
+         the project root (e.g. ``--model-name model_dqn`` finds
+         ``examples/model_dqn.py``).
+
+    A :class:`ModuleNotFoundError` raised *inside* a resolved module (e.g. a
+    missing ``torch`` import in the model file) is **not** silently swallowed
+    — it propagates with its original message so the real cause is visible.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    # 1. Filesystem path.
+    if "/" in model_name or model_name.endswith(".py"):
+        path = Path(model_name).expanduser().resolve()
+        if not path.is_file():
+            raise ModuleNotFoundError(
+                f"--model-name {model_name!r}: file not found at {path}"
+            )
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot create module spec for {path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)  # transitive ImportErrors propagate as-is
+        return module
+
+    # 2-4. Importable names, tried in order.
+    candidates = (
+        f"hexgame.client.models.{model_name}",
+        model_name,
+        f"examples.{model_name}",
+    )
+    last_not_found: ModuleNotFoundError | None = None
+    for candidate in candidates:
+        try:
+            return importlib.import_module(candidate)
+        except ModuleNotFoundError as exc:
+            # If `exc.name` matches the candidate or a prefix of it, the
+            # candidate itself is missing — fine, try the next one.
+            # Otherwise the candidate WAS found but a transitive import
+            # failed (e.g. `import torch` inside model_dqn.py); re-raise so
+            # the user sees the real error.
+            missing = exc.name or ""
+            if missing == candidate or candidate.startswith(missing + "."):
+                last_not_found = exc
+                continue
+            raise
+
+    raise ModuleNotFoundError(
+        f"No model module found for --model-name {model_name!r}. "
+        f"Tried: {', '.join(candidates)}. "
+        "For an unpackaged file, pass --model-name path/to/model.py instead."
+    ) from last_not_found
 
 
 def empty_cells(board: list[list[int | None]]) -> list[tuple[int, int]]:

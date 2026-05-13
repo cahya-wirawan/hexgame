@@ -44,6 +44,10 @@ def main(argv: list[str] | None = None) -> None:
         sys.stderr.write(f"hexgame: unknown command {command!r}\n\n{_usage()}\n")
         raise SystemExit(2)
 
+    from hexgame import __version__
+
+    print(f"hexgame {__version__} — {command} client", flush=True)
+
     module_name, _ = _SUBCOMMANDS[command]
     module = importlib.import_module(module_name)
     module.main(argv[1:])

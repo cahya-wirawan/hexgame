@@ -5,12 +5,14 @@ import asyncio
 import importlib
 import json
 import math
+import time
 from typing import Any
 from urllib.parse import urlencode
 
 import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
+from hexgame import __version__
 from hexgame.client.client_safety import (
     InvalidModelMove,
     MatchReplayLog,
@@ -41,6 +43,73 @@ def empty_cells(board: list[list[int | None]]) -> list[tuple[int, int]]:
         for q, cell in enumerate(row)
         if cell == 0
     ]
+
+
+# Hex neighbour offsets, identical to the server (hexgame.server.game.DIRECTIONS).
+_HEX_DIRECTIONS = [(+1, 0), (-1, 0), (0, +1), (0, -1), (+1, -1), (-1, +1)]
+
+
+def compute_winning_path(
+    board: list[list[int]],
+    board_size: int,
+    winner: int | None,
+) -> set[tuple[int, int]] | None:
+    """Return the (row, col) cells along one winning path for ``winner``, or
+    ``None`` if ``winner`` has not connected their two goal edges.
+
+    Mirrors ``hexgame.server.game.check_winner`` but tracks BFS parents so we
+    can reconstruct a path. Board encoding: 0 empty, -1 player_1 (red,
+    left↔right), +1 player_2 (blue, top↔bottom).
+    """
+    if winner not in (-1, 1):
+        return None
+
+    parent: dict[tuple[int, int], tuple[int, int] | None] = {}
+    queue: list[tuple[int, int]] = []
+
+    if winner == -1:  # red: start q=0, goal q=board_size-1
+        for r in range(board_size):
+            if board[r][0] == winner:
+                queue.append((0, r))
+                parent[(0, r)] = None
+    else:  # blue: start r=0, goal r=board_size-1
+        for q in range(board_size):
+            if board[0][q] == winner:
+                queue.append((q, 0))
+                parent[(q, 0)] = None
+
+    goal: tuple[int, int] | None = None
+    head = 0
+    while head < len(queue):
+        q, r = queue[head]
+        head += 1
+        if winner == -1 and q == board_size - 1:
+            goal = (q, r)
+            break
+        if winner == 1 and r == board_size - 1:
+            goal = (q, r)
+            break
+        for dq, dr in _HEX_DIRECTIONS:
+            nq, nr = q + dq, r + dr
+            if not (0 <= nq < board_size and 0 <= nr < board_size):
+                continue
+            if board[nr][nq] != winner:
+                continue
+            if (nq, nr) in parent:
+                continue
+            parent[(nq, nr)] = (q, r)
+            queue.append((nq, nr))
+
+    if goal is None:
+        return None
+
+    path: set[tuple[int, int]] = set()
+    node: tuple[int, int] | None = goal
+    while node is not None:
+        q, r = node
+        path.add((r, q))  # store as (row, col) for the renderer
+        node = parent[node]
+    return path
 
 
 class HexBoardViewer:
@@ -80,7 +149,7 @@ class HexBoardViewer:
         self.pygame = pygame
         pygame.init()
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
-        pygame.display.set_caption("Hex Client")
+        pygame.display.set_caption(f"Hex Client v{__version__}")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("arial", 24, bold=True)
         self.small_font = pygame.font.SysFont("arial", 18)
@@ -92,6 +161,7 @@ class HexBoardViewer:
         self.hex_centers = self._calculate_hex_centers()
         self.running = True
         self.clicked_cells: list[tuple[int, int]] = []
+        self._skip_pause_requested = False
 
     def _calculate_hex_centers(self) -> dict[tuple[int, int], tuple[float, float]]:
         centers = {}
@@ -117,8 +187,11 @@ class HexBoardViewer:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
-            elif event.type == pygame.KEYDOWN and event.key in {pygame.K_ESCAPE, pygame.K_q}:
-                self.running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key in {pygame.K_ESCAPE, pygame.K_q}:
+                    self.running = False
+                elif event.key == pygame.K_SPACE:
+                    self._skip_pause_requested = True
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 cell = self._mouse_to_cell(event.pos)
                 if cell is not None:
@@ -129,6 +202,12 @@ class HexBoardViewer:
         if not self.clicked_cells:
             return None
         return self.clicked_cells.pop(0)
+
+    def consume_skip_pause(self) -> bool:
+        if self._skip_pause_requested:
+            self._skip_pause_requested = False
+            return True
+        return False
 
     def _mouse_to_cell(self, position: tuple[int, int]) -> tuple[int, int] | None:
         mouse_x, mouse_y = position
@@ -170,11 +249,13 @@ class HexBoardViewer:
         last_move_player: int | None,
         pending_move: bool,
         replay_path: str | None,
+        winning_path: set[tuple[int, int]] | None = None,
+        opponent_label: str | None = None,
     ) -> None:
         self.pump_events()
         self.screen.fill(self.COLORS["background"])
         self._draw_goal_edges()
-        self._draw_board(board, last_move=last_move)
+        self._draw_board(board, last_move=last_move, winning_path=winning_path)
         self._draw_coordinate_labels()
         self._draw_panel(
             status=status,
@@ -190,6 +271,7 @@ class HexBoardViewer:
             last_move_player=last_move_player,
             pending_move=pending_move,
             replay_path=replay_path,
+            opponent_label=opponent_label,
         )
         self.pygame.display.flip()
 
@@ -205,15 +287,26 @@ class HexBoardViewer:
         pygame.draw.line(self.screen, self.COLORS["edge_red"], top_left, bottom_left, 16)
         pygame.draw.line(self.screen, self.COLORS["edge_red"], top_right, bottom_right, 16)
 
-    def _draw_board(self, board: list[list[int | None]], *, last_move: tuple[int, int] | None) -> None:
+    def _draw_board(
+        self,
+        board: list[list[int | None]],
+        *,
+        last_move: tuple[int, int] | None,
+        winning_path: set[tuple[int, int]] | None = None,
+    ) -> None:
         pygame = self.pygame
         for row in range(self.board_size):
             for col in range(self.board_size):
                 center = self.hex_centers[(row, col)]
                 x, y = center
                 corners = self._hex_corners(center)
+                on_winning_path = winning_path is not None and (row, col) in winning_path
                 pygame.draw.polygon(self.screen, self.COLORS["cell"], corners)
-                pygame.draw.polygon(self.screen, self.COLORS["grid"], corners, 2)
+                # Thicker gold border for cells on the winning path; otherwise normal grid border.
+                if on_winning_path:
+                    pygame.draw.polygon(self.screen, self.COLORS["highlight"], corners, 5)
+                else:
+                    pygame.draw.polygon(self.screen, self.COLORS["grid"], corners, 2)
                 value = board[row][col]
                 if value == -1:
                     pygame.draw.circle(self.screen, self.COLORS["red"], (int(x), int(y)), int(self.hex_radius * 0.68))
@@ -252,6 +345,7 @@ class HexBoardViewer:
         last_move_player: int | None,
         pending_move: bool,
         replay_path: str | None,
+        opponent_label: str | None = None,
     ) -> None:
         pygame = self.pygame
         panel_rect = pygame.Rect(self.PANEL_LEFT, self.PANEL_TOP, self.PANEL_WIDTH, 610)
@@ -263,6 +357,7 @@ class HexBoardViewer:
         y += 38
         y = self._draw_status_line("Status", status, y)
         y = self._draw_status_line("Model", model_name, y)
+        y = self._draw_status_line("Opponent", opponent_label or "-", y)
         y = self._draw_status_line("Slot", str(slot_id) if slot_id is not None else "-", y)
         y = self._draw_status_line("Game", f"{game_number if game_number is not None else '-'} / {series_length}", y)
         y = self._draw_status_line("Score", f"{score[0]} : {score[1]}", y)
@@ -344,6 +439,7 @@ async def run(
     move_delay: float,
     replay_log: str,
     keep_slot: bool,
+    match_delay: float = 3.0,
 ) -> None:
     human_mode = model_name.lower() in {"human", "manual", "mouse"}
     model = None if human_mode else load_model(model_name)
@@ -382,6 +478,9 @@ async def run(
     move_count = 0
     last_move: tuple[int, int] | None = None
     last_move_player: int | None = None
+    winning_path: set[tuple[int, int]] | None = None
+    match_pause_until: float | None = None
+    opponent_label: str | None = None
     status = "Connecting"
     replay.record(
         "client_start",
@@ -393,6 +492,7 @@ async def run(
         requested_slot_id=slot_id,
         seed=seed,
         move_delay=move_delay,
+        match_delay=match_delay,
         gui=True,
         human_mode=human_mode,
         keep_slot=keep_slot,
@@ -413,6 +513,8 @@ async def run(
         last_move_player=last_move_player,
         pending_move=pending_move,
         replay_path=replay_path,
+        winning_path=winning_path,
+        opponent_label=opponent_label,
     )
 
     try:
@@ -462,6 +564,8 @@ async def run(
                         last_move_player=last_move_player,
                         pending_move=pending_move,
                         replay_path=replay_path,
+                        winning_path=winning_path,
+                        opponent_label=opponent_label,
                     )
                     continue
 
@@ -517,6 +621,44 @@ async def run(
                     replay.record("slot_kept", payload=payload)
                     status = f"Kept slot {assigned_slot_id}"
                 elif message_type == "game_start":
+                    # Between games of a series: hold on the previous game's
+                    # final board (with the winner's path highlighted) for
+                    # `match_delay` seconds, or until SPACE is pressed.
+                    if match_pause_until is not None:
+                        viewer.clicked_cells.clear()
+                        skipped = False
+                        while True:
+                            if not viewer.pump_events():
+                                return
+                            if viewer.consume_skip_pause():
+                                skipped = True
+                                break
+                            remaining = match_pause_until - time.monotonic()
+                            if remaining <= 0:
+                                break
+                            viewer.draw(
+                                board,
+                                status=f"Next match in {remaining:.1f}s — SPACE to skip",
+                                player_id=player_id,
+                                current_turn=None,
+                                score=score,
+                                game_number=current_game_number,
+                                series_length=series_length,
+                                model_name=player_label,
+                                slot_id=assigned_slot_id,
+                                move_count=move_count,
+                                last_move=last_move,
+                                last_move_player=last_move_player,
+                                pending_move=False,
+                                replay_path=replay_path,
+                                winning_path=winning_path,
+                                opponent_label=opponent_label,
+                            )
+                            await asyncio.sleep(0.1)
+                        viewer.clicked_cells.clear()
+                        replay.record("match_pause_ended", skipped=skipped)
+                        match_pause_until = None
+                        winning_path = None
                     current_turn = payload["first_turn"]
                     current_game_number = payload.get("current_game_number")
                     score = (payload.get("player_1_wins", score[0]), payload.get("player_2_wins", score[1]))
@@ -525,7 +667,24 @@ async def run(
                     move_count = 0
                     last_move = None
                     last_move_player = None
-                    replay.record("game_start", payload=payload)
+                    winning_path = None
+                    # Build "Opponent" label from server-supplied player_models / player_usernames.
+                    # Keys arrive as strings ("-1" / "1") in JSON.
+                    if player_id is not None:
+                        opponent_id = -player_id
+                        player_models = payload.get("player_models") or {}
+                        player_usernames = payload.get("player_usernames") or {}
+                        opp_model = player_models.get(str(opponent_id))
+                        opp_user = player_usernames.get(str(opponent_id))
+                        if opp_model and opp_user:
+                            opponent_label = f"{opp_model} ({opp_user})"
+                        elif opp_model:
+                            opponent_label = opp_model
+                        elif opp_user:
+                            opponent_label = opp_user
+                        else:
+                            opponent_label = None
+                    replay.record("game_start", payload=payload, opponent_label=opponent_label)
                     status = "Game started"
                 elif message_type == "move":
                     q = payload["q"]
@@ -549,6 +708,8 @@ async def run(
                             last_move_player=last_move_player,
                             pending_move=pending_move,
                             replay_path=replay_path,
+                            winning_path=winning_path,
+                            opponent_label=opponent_label,
                         )
                         await viewer.wait_until_closed()
                         return
@@ -566,8 +727,20 @@ async def run(
                 elif message_type == "game_over":
                     current_turn = None
                     pending_move = False
-                    replay.record("game_over", payload=payload, board=board)
-                    status = f"Game over: {payload.get('winner')} wins"
+                    winner = payload.get("winner")
+                    winning_path = compute_winning_path(board, board_size, winner)
+                    replay.record(
+                        "game_over",
+                        payload=payload,
+                        board=board,
+                        winning_path=sorted(winning_path) if winning_path else None,
+                    )
+                    winner_label = MODEL_TO_PLAYER.get(winner, str(winner))
+                    if match_delay > 0 and series_length > 1:
+                        match_pause_until = time.monotonic() + match_delay
+                        status = f"Game over: {winner_label} wins — next match in {match_delay:.1f}s (SPACE to skip)"
+                    else:
+                        status = f"Game over: {winner_label} wins"
                 elif message_type == "series_update":
                     score = (payload.get("player_1_wins", score[0]), payload.get("player_2_wins", score[1]))
                     current_game_number = payload.get("current_game_number", current_game_number)
@@ -597,6 +770,8 @@ async def run(
                         last_move_player=last_move_player,
                         pending_move=pending_move,
                         replay_path=replay_path,
+                        winning_path=winning_path,
+                        opponent_label=opponent_label,
                     )
                     await viewer.wait_until_closed()
                     return
@@ -623,6 +798,8 @@ async def run(
                         last_move_player=last_move_player,
                         pending_move=pending_move,
                         replay_path=replay_path,
+                        winning_path=winning_path,
+                        opponent_label=opponent_label,
                     )
                     await viewer.wait_until_closed()
                     return
@@ -642,6 +819,8 @@ async def run(
                         last_move_player=last_move_player,
                         pending_move=False,
                         replay_path=replay_path,
+                        winning_path=winning_path,
+                        opponent_label=opponent_label,
                     )
                     await viewer.wait_until_closed()
                     return
@@ -661,6 +840,8 @@ async def run(
                         last_move_player=last_move_player,
                         pending_move=pending_move,
                         replay_path=replay_path,
+                        winning_path=winning_path,
+                        opponent_label=opponent_label,
                     )
                     await viewer.wait_until_closed()
                     return
@@ -680,6 +861,8 @@ async def run(
                     last_move_player=last_move_player,
                     pending_move=pending_move,
                     replay_path=replay_path,
+                    winning_path=winning_path,
+                    opponent_label=opponent_label,
                 )
 
                 if human_mode:
@@ -705,6 +888,8 @@ async def run(
                         last_move_player=last_move_player,
                         pending_move=pending_move,
                         replay_path=replay_path,
+                        winning_path=winning_path,
+                        opponent_label=opponent_label,
                     )
                     await asyncio.sleep(move_delay)
                     if not viewer.pump_events():
@@ -730,6 +915,8 @@ async def run(
                             last_move_player=last_move_player,
                             pending_move=pending_move,
                             replay_path=replay_path,
+                            winning_path=winning_path,
+                            opponent_label=opponent_label,
                         )
                         await viewer.wait_until_closed()
                         return
@@ -777,6 +964,13 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="After a completed series, keep this connection in the same slot and wait for another match.",
     )
+    parser.add_argument(
+        "--match-delay",
+        type=float,
+        default=3.0,
+        help="Seconds to hold the final board (with the winner's path highlighted) "
+             "between games of a series. Press SPACE to skip. Default: 3.0; set to 0 to disable.",
+    )
     args = parser.parse_args(argv)
     asyncio.run(
         run(
@@ -790,6 +984,7 @@ def main(argv: list[str] | None = None) -> None:
             args.move_delay,
             args.replay_log,
             args.keep_slot,
+            args.match_delay,
         )
     )
 

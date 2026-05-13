@@ -182,6 +182,7 @@ class WebSocketGameManager:
                     assignment.slot_id,
                 )
             elif state["next_game_started"]:
+                player_models, player_usernames = await self._slot_player_labels(assignment.slot_id)
                 await self._broadcast_connections(
                     series_connections,
                     game_start(
@@ -193,6 +194,8 @@ class WebSocketGameManager:
                         state["player_1_wins"],
                         state["player_2_wins"],
                         state["wins_required"],
+                        player_models=player_models,
+                        player_usernames=player_usernames,
                     ),
                     assignment.slot_id,
                 )
@@ -314,6 +317,7 @@ class WebSocketGameManager:
         slot = await self.slot_manager.get_slot(slot_id)
         if slot is None or slot.series_state is None or slot.game_state is None:
             return game_start(slot_id, board_size, PLAYER_1, 1, 1, 0, 0, 1)
+        player_models, player_usernames = self._slot_labels_from_slot(slot)
         return game_start(
             slot_id,
             board_size,
@@ -323,4 +327,17 @@ class WebSocketGameManager:
             slot.series_state.player_1_wins,
             slot.series_state.player_2_wins,
             slot.series_state.wins_required,
+            player_models=player_models,
+            player_usernames=player_usernames,
         )
+
+    async def _slot_player_labels(self, slot_id: int) -> tuple[dict[str, str | None], dict[str, str | None]]:
+        slot = await self.slot_manager.get_slot(slot_id)
+        if slot is None:
+            return {}, {}
+        return self._slot_labels_from_slot(slot)
+
+    @staticmethod
+    def _slot_labels_from_slot(slot) -> tuple[dict[str, str | None], dict[str, str | None]]:
+        snapshot = slot.public_snapshot()
+        return snapshot.get("player_models", {}) or {}, snapshot.get("player_usernames", {}) or {}

@@ -339,5 +339,14 @@ class WebSocketGameManager:
 
     @staticmethod
     def _slot_labels_from_slot(slot) -> tuple[dict[str, str | None], dict[str, str | None]]:
-        snapshot = slot.public_snapshot()
-        return snapshot.get("player_models", {}) or {}, snapshot.get("player_usernames", {}) or {}
+        player_models: dict[str, str | None] = {}
+        player_usernames: dict[str, str | None] = {}
+        for connection in (slot.player_1, slot.player_2):
+            if connection is None:
+                continue
+            key = str(connection.player_id)
+            if connection.model_name:
+                player_models[key] = connection.model_name
+            if connection.username:
+                player_usernames[key] = connection.username
+        return player_models, player_usernames

@@ -353,7 +353,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--seed", type=int)
     parser.add_argument("--move-delay", type=float, default=0.1)
     parser.add_argument("--model-name", type=str, default="model_random")
-    parser.add_argument("--username", type=str, help="Public username shown as the model owner in slot views.")
+    parser.add_argument(
+        "--username",
+        type=str,
+        help="Public username shown as the model owner in slot views. "
+             "Defaults to the OS user (getpass.getuser()) if omitted; pass '' to send anonymously.",
+    )
     parser.add_argument(
         "--replay-log",
         default="auto",
@@ -372,6 +377,8 @@ def main(argv: list[str] | None = None) -> None:
              "the first time you connect.",
     )
     args = parser.parse_args(argv)
+    if args.username is None:
+        args.username = _default_username()
     asyncio.run(
         run(
             args.model_name,
@@ -387,6 +394,21 @@ def main(argv: list[str] | None = None) -> None:
             args.reconnect_token,
         )
     )
+
+
+def _default_username() -> str | None:
+    """Best-effort OS username, used when ``--username`` isn't supplied.
+
+    Uses :func:`getpass.getuser`, which consults ``$LOGNAME``/``$USER``/``$USERNAME``
+    and falls back to the password database. Returns ``None`` if even that fails
+    (rare — e.g. no controlling terminal and no env vars set).
+    """
+    import getpass
+
+    try:
+        return getpass.getuser() or None
+    except Exception:
+        return None
 
 
 if __name__ == "__main__":

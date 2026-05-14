@@ -20,7 +20,7 @@ from hexgame.client.client_safety import (
     board_for_model,
     model_move_to_payload,
 )
-from hexgame.client.model_client import load_model
+from hexgame.client.model_client import _default_username, load_model
 
 MODEL_TO_COLOR = {
     -1: "red",
@@ -371,6 +371,8 @@ class HexBoardViewer:
         pygame.draw.rect(self.screen, self.COLORS["panel"], panel_rect, border_radius=8)
         pygame.draw.rect(self.screen, self.COLORS["panel_border"], panel_rect, width=1, border_radius=8)
 
+        model_name = model_name.split("/")[-1] if model_name else "human"
+        opponent_label = opponent_label.split("/")[-1] if opponent_label else None
         y = self.PANEL_TOP + 20
         self._draw_text("Hex Client", self.PANEL_LEFT + 18, y, self.font, self.COLORS["text"])
         y += 38
@@ -1017,7 +1019,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--seed", type=int)
     parser.add_argument("--move-delay", type=float, default=0.1)
     parser.add_argument("--model-name", type=str, default="model_random")
-    parser.add_argument("--username", type=str, help="Public username shown as the model owner in slot views.")
+    parser.add_argument(
+        "--username",
+        type=str,
+        help="Public username shown as the model owner in slot views. "
+             "Defaults to the OS user (getpass.getuser()) if omitted; pass '' to send anonymously.",
+    )
     parser.add_argument(
         "--replay-log",
         default="auto",
@@ -1043,6 +1050,8 @@ def main(argv: list[str] | None = None) -> None:
              "the first time you connect.",
     )
     args = parser.parse_args(argv)
+    if args.username is None:
+        args.username = _default_username()
     asyncio.run(
         run(
             args.model_name,

@@ -155,6 +155,7 @@ class HexBoardViewer:
         "panel_border": (203, 213, 225),
         "highlight": (250, 204, 21),
         "white": (255, 255, 255),
+        "winning_cell": (0, 0, 0),
     }
 
     def __init__(self, board_size: int):
@@ -320,12 +321,11 @@ class HexBoardViewer:
                 x, y = center
                 corners = self._hex_corners(center)
                 on_winning_path = winning_path is not None and (row, col) in winning_path
-                pygame.draw.polygon(self.screen, self.COLORS["cell"], corners)
-                # Thicker gold border for cells on the winning path; otherwise normal grid border.
-                if on_winning_path:
-                    pygame.draw.polygon(self.screen, self.COLORS["highlight"], corners, 5)
-                else:
-                    pygame.draw.polygon(self.screen, self.COLORS["grid"], corners, 2)
+                # Black fill for winning-path cells makes the red/blue stones pop;
+                # normal cells use the light fill.
+                fill_color = self.COLORS["winning_cell"] if on_winning_path else self.COLORS["cell"]
+                pygame.draw.polygon(self.screen, fill_color, corners)
+                pygame.draw.polygon(self.screen, self.COLORS["grid"], corners, 2)
                 value = board[row][col]
                 if value == -1:
                     pygame.draw.circle(self.screen, self.COLORS["red"], (int(x), int(y)), int(self.hex_radius * 0.68))

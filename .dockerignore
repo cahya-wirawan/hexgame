@@ -10,7 +10,9 @@ frontend/.vite
 frontend/dist
 frontend/tsconfig.tsbuildinfo
 
-src/hexgame/server/static/overview
+server/src/hexgame_server/static/overview
 
+# Client + examples + tests aren't needed inside the server image.
+client
 examples
 tests

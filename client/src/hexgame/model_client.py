@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
-from hexgame.client.client_safety import (
+from hexgame.client_safety import (
     InvalidModelMove,
     MatchReplayLog,
     apply_server_move,
@@ -49,7 +49,7 @@ def load_model(model_name: str):
          ``.py``), load that file directly with :mod:`importlib.util`. This
          sidesteps ``sys.path`` entirely — handy for the unpackaged
          ``examples/`` models in a repo checkout.
-      2. ``hexgame.client.models.<model_name>`` — the bundled example models.
+      2. ``hexgame.models.<model_name>`` — the bundled example models.
       3. ``<model_name>`` — a top-level package/module on ``sys.path``.
       4. ``examples.<model_name>`` — convenience for repo checkouts run from
          the project root (e.g. ``--model-name model_dqn`` finds
@@ -92,7 +92,7 @@ def load_model(model_name: str):
 
     # 2-4. Importable names, tried in order.
     candidates = (
-        f"hexgame.client.models.{model_name}",
+        f"hexgame.models.{model_name}",
         model_name,
         f"examples.{model_name}",
     )

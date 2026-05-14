@@ -1,8 +1,9 @@
-"""Build hook: compile the Vite frontend into the package before packaging.
+"""Build hook for the `hexgame-server` distribution: compile the Vite frontend
+into the package before packaging.
 
 Packaging metadata lives entirely in pyproject.toml. This file only exists so
 that `python -m build` / `pip install .` run `npm run build` and pick up the
-generated bundle as package data (hexgame.server / static/overview/**).
+generated bundle as package data (`hexgame_server/static/overview/**`).
 
 Skip the frontend build with HEXGAME_SKIP_FRONTEND_BUILD=1 (useful for fast
 editable installs once the bundle already exists, and for the Docker runtime
@@ -20,9 +21,9 @@ from pathlib import Path
 from setuptools import setup
 from setuptools.command.build_py import build_py as _build_py
 
-ROOT = Path(__file__).parent
-FRONTEND_DIR = ROOT / "frontend"
-BUNDLE_INDEX = ROOT / "src" / "hexgame" / "server" / "static" / "overview" / "index.html"
+ROOT = Path(__file__).parent                # .../<repo>/server
+FRONTEND_DIR = ROOT.parent / "frontend"     # frontend/ lives at the repo root
+BUNDLE_INDEX = ROOT / "src" / "hexgame_server" / "static" / "overview" / "index.html"
 
 
 def build_frontend() -> None:

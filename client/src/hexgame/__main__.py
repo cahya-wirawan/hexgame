@@ -17,9 +17,9 @@ import sys
 
 
 _SUBCOMMANDS = {
-    "random": ("hexgame.client.random_client", "uniformly random legal moves (smoke/stress test)"),
-    "play": ("hexgame.client.model_client", "model-driven client (--model-name ...)"),
-    "gui": ("hexgame.client.gui_client", "pygame GUI model client (needs the [gui] extra)"),
+    "random": ("hexgame.random_client", "uniformly random legal moves (smoke/stress test)"),
+    "play": ("hexgame.model_client", "model-driven client (--model-name ...)"),
+    "gui": ("hexgame.gui_client", "pygame GUI model client (needs the [gui] extra)"),
 }
 
 

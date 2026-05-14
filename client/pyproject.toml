@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hexgame"
+dynamic = ["version"]
+description = "Reference Hex game clients (random-move bot, model-driven client, pygame GUI) for the hexgame-server arena"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Cahya Wirawan", email = "cahya.wirawan@gmail.com" }]
+keywords = ["hex", "game", "board-game", "websocket", "client"]
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Intended Audience :: Developers",
+  "Topic :: Games/Entertainment :: Board Games",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+
+# Core runtime: just enough to connect to a hexgame-server and play.
+# FastAPI/uvicorn are NOT runtime deps of the client; install hexgame-server
+# separately to host your own arena.
+dependencies = [
+  "websockets>=11,<12",
+]
+
+[project.optional-dependencies]
+gui = ["pygame>=2.5,<3"]
+dev = ["pytest>=7,<8", "pytest-asyncio>=0.21,<0.22"]
+
+[project.scripts]
+hexgame = "hexgame.__main__:main"
+
+[project.urls]
+Homepage = "https://hexgame.codingdojo.ai"
+Source = "https://github.com/cahya-wirawan/hexgame"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.dynamic]
+version = { attr = "hexgame.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"hexgame" = ["run_pair.sh"]

@@ -1,6 +1,6 @@
 import pytest
 
-from hexgame.client.client_safety import (
+from hexgame.client_safety import (
     InvalidModelMove,
     MatchReplayLog,
     apply_server_move,

@@ -1,8 +1,11 @@
 # Convenience installer for local development.
-# Installs the hexgame package in editable mode with every optional backend
-# (redis, postgres, gui) plus the test tools.
+# Installs both distributions in editable mode with every optional backend
+# (redis, postgres, gui) and the test tools.
 #
 #   python -m pip install -r requirements.txt
 #
-# Equivalent to:  python -m pip install -e ".[all,dev]"
--e .[all,dev]
+# Equivalent to:
+#   python -m pip install -e "./client[gui,dev]" -e "./server[all,dev]"
+
+-e ./client[gui,dev]
+-e ./server[all,dev]

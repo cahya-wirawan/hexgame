@@ -5,9 +5,12 @@ state, win detection, a random-move test client, and a Vite/Tailwind/shadcn-ui
 frontend with a landing page, operational overview dashboard, and statistics
 leaderboard.
 
-Packaged as `hexgame` on PyPI: `pip install hexgame` gives you the
-`hexgame-server` command (the FastAPI server) and the `hexgame` command
-(`random`, `play`, and `gui` clients).
+Shipped as **two independent PyPI distributions**:
+
+- [`hexgame`](https://pypi.org/project/hexgame/) — the **clients** (`hexgame random` / `hexgame play` / `hexgame gui`). Lightweight: only depends on `websockets` (and `pygame` for the GUI extra). Install this if you just want to play.
+- [`hexgame-server`](https://pypi.org/project/hexgame-server/) — the **FastAPI server** (`hexgame-server`). Heavier: depends on FastAPI/uvicorn, with optional `[redis]` / `[postgres]` extras for the shared-state backend. Install this if you want to host your own arena.
+
+The two distributions share no runtime code; install either, both, or neither.
 
 The current implementation covers Phases 1-7 from `PLAN.md`:
 
@@ -42,31 +45,53 @@ User accounts and ratings are intentionally not implemented yet.
 
 ## Installation
 
-The project is packaged as `hexgame`. Installing it provides two console
-commands: `hexgame-server` (the FastAPI server) and `hexgame` (the clients).
+The repo ships two installable Python distributions, each with its own console command:
 
-End users — install from PyPI:
+| Distribution | Command | Use case |
+|---|---|---|
+| [`hexgame`](https://pypi.org/project/hexgame/) | `hexgame {random,play,gui}` | play against an existing server |
+| [`hexgame-server`](https://pypi.org/project/hexgame-server/) | `hexgame-server` | host your own arena |
+
+### End users — install from PyPI
 
 ```bash
-pip install hexgame                 # server + random/model clients
-pip install "hexgame[gui]"          # also the pygame GUI client
-pip install "hexgame[all]"          # everything: redis, postgres, gui
+# Just play (against the hosted arena or any hexgame-server instance):
+pip install hexgame
+pip install "hexgame[gui]"           # adds the pygame GUI client
+
+# Run your own server:
+pip install hexgame-server
+pip install "hexgame-server[redis]"     # add Redis state backend
+pip install "hexgame-server[postgres]"  # add PostgreSQL completed-series history
+pip install "hexgame-server[all]"       # both backends
+
+# Both on the same machine (e.g. developing locally):
+pip install hexgame hexgame-server
 ```
 
-Developers — editable install from a checkout:
+### Developers — editable install from a checkout
+
+The repo is a monorepo: `client/` and `server/` each have their own `pyproject.toml`. The convenience installer in `requirements.txt` installs both, with all extras:
 
 ```bash
-python -m pip install -e ".[dev,all]"
-# or, equivalently:
 python -m pip install -r requirements.txt
+# expands to:
+#   python -m pip install -e "./client[gui,dev]" -e "./server[all,dev]"
 ```
 
-Rebuilding the overview frontend (only if you change `frontend/`):
+Or install just the side you need:
+
+```bash
+python -m pip install -e "./client[gui,dev]"
+python -m pip install -e "./server[all,dev]"
+```
+
+### Rebuilding the overview frontend (only if you change `frontend/`)
 
 ```bash
 cd frontend
 npm install
-npm run build        # writes to src/hexgame/server/static/overview/
+npm run build        # writes to server/src/hexgame_server/static/overview/
 ```
 
 ## Using The Hosted Server
@@ -118,11 +143,11 @@ hexgame play --model-name model_random --board-size 7 --server ws://localhost:80
 hexgame gui --model-name human --board-size 7 --server ws://localhost:8000
 ```
 
-`hexgame-server` is a thin wrapper around `uvicorn hexgame.server.main:app`;
+`hexgame-server` is a thin wrapper around `uvicorn hexgame_server.main:app`;
 pass `--host`, `--port`, `--workers`, `--reload`, or `--log-level` as needed.
-If WebSocket clients receive HTTP 404 on `/ws/matchmake`, reinstall the package
-(`pip install -e ".[dev,all]"`) so `uvicorn[standard]`/`websockets` are present,
-then restart the server.
+If WebSocket clients receive HTTP 404 on `/ws/matchmake`, reinstall the server
+package (`pip install -e "./server[all,dev]"`) so `uvicorn[standard]` /
+`websockets` are present, then restart the server.
 
 ## Docker Compose
 
@@ -221,7 +246,7 @@ cd frontend
 npm run build
 ```
 
-The production build writes to `src/hexgame/server/static/overview/`. FastAPI serves the
+The production build writes to `server/src/hexgame_server/static/overview/`. FastAPI serves the
 landing page at `/`, the documentation page at `/docs`, the dashboard at
 `/overview`, the leaderboard at `/statistics`, and assets from
 `/overview/assets/...`.
@@ -613,7 +638,7 @@ messages, and any extra `player` field in a move payload is ignored.
 
 ## Gameplay Rules
 
-- The current `src/hexgame/server/config.py` maps `PLAYER_1 = -1` and `PLAYER_2 = 1`.
+- The current `server/src/hexgame_server/config.py` maps `PLAYER_1 = -1` and `PLAYER_2 = 1`.
 - `player_1` (`-1`, red) moves first.
 - A game is one Hex board.
 - A series is best-of `1`, `3`, `5`, `7`, `9`, `11`, `13`, or `15` games
@@ -646,7 +671,7 @@ The server rejects moves when:
 
 When a player disconnects, the server keeps the slot, game board, series
 score, and seat assignment in memory for `RECONNECT_TIMEOUT_SECONDS` from
-`src/hexgame/server/config.py`. The remaining player receives
+`server/src/hexgame_server/config.py`. The remaining player receives
 `opponent_disconnected` and the match is paused. During the pause, moves are
 rejected with `Game paused for reconnect`.
 
@@ -721,12 +746,12 @@ hexgame random \
 There is also a helper script:
 
 ```bash
-bash src/hexgame/client/run_pair.sh
+bash client/src/hexgame/run_pair.sh
 ```
 
 ### Model Client
 
-`hexgame play` (module `hexgame.client.model_client`) loads a model module
+`hexgame play` (module `hexgame.model_client`) loads a model module
 dynamically. The module must export:
 
 ```python
@@ -740,7 +765,7 @@ def agent(board, action_set):
    value containing `/` or ending in `.py`). Loaded directly with
    `importlib.util`, so no `sys.path` / `PYTHONPATH` setup is needed. This is
    the most reliable form for unpackaged models.
-2. A **bundled model** name: `hexgame.client.models.<NAME>` — currently
+2. A **bundled model** name: `hexgame.models.<NAME>` — currently
    `model_random` and `model_first`.
 3. A **top-level module** name on `sys.path` — drop `my_agent.py` in your
    working directory and pass `--model-name my_agent`.
@@ -827,7 +852,7 @@ The combination routes to `/ws/reconnect?slot_id=...&token=...` instead of the
 normal matchmaking endpoint. `--reconnect-token` without `--slot-id` is
 rejected with a clear error.
 
-Bundled example models (in `hexgame.client.models`):
+Bundled example models (in `hexgame.models`):
 
 - `model_random`
 - `model_first`
@@ -839,7 +864,7 @@ checkout with `examples/` on `PYTHONPATH`.
 
 ### Pygame GUI Model Client
 
-`hexgame gui` (module `hexgame.client.gui_client`, needs the `[gui]` extra) is
+`hexgame gui` (module `hexgame.gui_client`, needs the `[gui]` extra) is
 the graphical version of the model client. The window title shows the package
 version (`Hex Client v<version>`). The side panel shows:
 
@@ -915,12 +940,13 @@ hexgame gui --slot-id 3 --reconnect-token a1b2c3d4e5
 
 ## Tests
 
-Install the dev + optional dependencies, then run pytest from the repo root
-(`pyproject.toml` puts `src/` on the path, so no install is strictly required,
-but the database/redis tests need those extras):
+Install the dev + optional dependencies, then run pytest from the repo root.
+The root `pyproject.toml` puts both `client/src/` and `server/src/` on the path,
+so the in-memory tests need no install; the database/redis tests need the
+matching extras.
 
 ```bash
-python -m pip install -e ".[dev,all]"
+python -m pip install -r requirements.txt   # editable install of both packages
 python -m pytest
 ```
 
@@ -944,42 +970,58 @@ The current test suite covers:
 
 ## Project Layout
 
+This is a monorepo with **two installable distributions**, each in its own subdirectory:
+
 ```text
-pyproject.toml             Package metadata, dependencies, console entry points
-MANIFEST.in                Extra files to include in the source distribution
+pyproject.toml                       Repo-root: pytest config only (no project metadata).
+requirements.txt                     Convenience installer for both packages in editable mode.
+docker-compose.yml                   Compose the server + Redis + Postgres locally.
 
-src/hexgame/
-  server/                  -> console command: hexgame-server
-    __main__.py            CLI wrapper around uvicorn (hexgame.server.main:app)
-    main.py                FastAPI routes and global SlotManager
-    config.py              Slot, board-size, protocol, and player constants
-    models.py              GameSlot, PlayerConnection, SlotAssignment, HexGameState
-    protocol.py            Message parsing and message factories
-    slots.py               SlotManager and slot lifecycle
-    redis_slots.py         Optional Redis-backed SlotManager
-    database.py            SQLAlchemy ORM models and completed-series repository
-    game.py                Move validation and win detection
-    websocket_manager.py   WebSocket receive loop and gameplay handling
-    static/overview/       Built Vite dashboard (shipped in the wheel)
-  client/                  -> console command: hexgame {random,play,gui}
-    __main__.py            Subcommand dispatcher
-    random_client.py       Random-move client          (hexgame random)
-    model_client.py        Model-driven client         (hexgame play)
-    gui_client.py          Pygame model/human client   (hexgame gui, [gui] extra)
-    client_safety.py       Model-output validation and JSONL replay logging
-    hex_engine.py          Local Hex engine used by ML models
-    models/                Bundled example model agents (model_random, model_first)
-    run_pair.sh            Launches two random clients against a local server
+client/                              -> distribution `hexgame`, console command: hexgame
+  pyproject.toml                     name = "hexgame"
+  MANIFEST.in
+  README.md
+  src/hexgame/
+    __init__.py                      __version__
+    __main__.py                      Subcommand dispatcher
+    random_client.py                 hexgame random
+    model_client.py                  hexgame play   (also exposes load_model)
+    gui_client.py                    hexgame gui    (needs the [gui] extra)
+    client_safety.py                 Model-output validation and JSONL replay logging
+    hex_engine.py                    Local Hex engine used by ML models
+    models/                          Bundled example agents (model_random, model_first)
+    run_pair.sh                      Launches two random clients against a local server
 
-frontend/
-  src/                     Vite React overview source
-  vite.config.ts           Builds into src/hexgame/server/static/overview/
+server/                              -> distribution `hexgame-server`, console command: hexgame-server
+  pyproject.toml                     name = "hexgame-server"
+  setup.py                           Build hook that runs the Vite frontend build
+  Dockerfile                         Multi-stage build (Node for frontend, then Python)
+  MANIFEST.in
+  README.md
+  src/hexgame_server/
+    __init__.py                      __version__
+    __main__.py                      CLI wrapper around uvicorn (hexgame_server.main:app)
+    main.py                          FastAPI routes and global SlotManager
+    config.py                        Slot, board-size, protocol, and player constants
+    models.py                        GameSlot, PlayerConnection, SlotAssignment, HexGameState
+    protocol.py                      Message parsing and message factories
+    slots.py                         SlotManager and slot lifecycle
+    redis_slots.py                   Optional Redis-backed SlotManager
+    database.py                      SQLAlchemy ORM + completed-series repository
+    game.py                          Move validation and win detection
+    websocket_manager.py             WebSocket receive loop and gameplay handling
+    static/overview/                 Built Vite dashboard (shipped in the server wheel)
 
-examples/                  Heavy/optional ML extras (not part of the package):
-  model_alphazero.py, model_dqn*.py, *.pt weights, hex_mcts.cpp, setup_mcts.py
+frontend/                            Vite + React source for the dashboard.
+  vite.config.ts                     Builds into server/src/hexgame_server/static/overview/
 
-tests/
-  test_*.py                Unit and integration tests
+examples/                            Heavy/optional ML extras (not part of either package):
+                                     model_alphazero.py, model_dqn*.py, *.pt weights,
+                                     hex_mcts.cpp, setup_mcts.py.
+
+tests/                               Unit + integration tests. pyproject `pythonpath` makes
+                                     both `client/src/` and `server/src/` importable
+                                     without installing.
 ```
 
 ## Operational Notes

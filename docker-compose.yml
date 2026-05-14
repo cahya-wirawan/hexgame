@@ -2,7 +2,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: server/Dockerfile
     environment:
       HEX_STATE_BACKEND: redis
       HEX_REDIS_URL: redis://redis:6379/0

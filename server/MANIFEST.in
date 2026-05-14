@@ -1,0 +1,4 @@
+include README.md
+include PLAN.md
+recursive-include src/hexgame_server/static *
+global-exclude __pycache__ *.py[cod] *.so .DS_Store

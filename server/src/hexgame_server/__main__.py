@@ -1,7 +1,7 @@
 """Console entry point for the Hex game server (``hexgame-server``).
 
 Thin wrapper around uvicorn so the package installs a real command. Equivalent
-to ``python -m uvicorn hexgame.server.main:app`` with a few common flags.
+to ``python -m uvicorn hexgame_server.main:app`` with a few common flags.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import logging
 
-from hexgame import __version__
+from hexgame_server import __version__
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> None:
     import uvicorn
 
     uvicorn.run(
-        "hexgame.server.main:app",
+        "hexgame_server.main:app",
         host=args.host,
         port=args.port,
         workers=args.workers,

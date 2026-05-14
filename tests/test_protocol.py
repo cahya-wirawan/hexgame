@@ -1,4 +1,4 @@
-from hexgame.server.protocol import parse_client_message
+from hexgame_server.protocol import parse_client_message
 
 
 def test_valid_message_parses_with_payload():

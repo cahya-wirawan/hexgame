@@ -13,14 +13,14 @@ import websockets
 from websockets.exceptions import InvalidStatus, InvalidStatusCode
 
 from hexgame import __version__
-from hexgame.client.client_safety import (
+from hexgame.client_safety import (
     InvalidModelMove,
     MatchReplayLog,
     apply_server_move,
     board_for_model,
     model_move_to_payload,
 )
-from hexgame.client.model_client import _default_username, load_model
+from hexgame.model_client import _default_username, load_model
 
 MODEL_TO_COLOR = {
     -1: "red",
@@ -64,7 +64,7 @@ def opponent_label_from(
     return opp_model or opp_user or None
 
 
-# Hex neighbour offsets, identical to the server (hexgame.server.game.DIRECTIONS).
+# Hex neighbour offsets, identical to the server (hexgame_server.game.DIRECTIONS).
 _HEX_DIRECTIONS = [(+1, 0), (-1, 0), (0, +1), (0, -1), (+1, -1), (-1, +1)]
 
 
@@ -76,7 +76,7 @@ def compute_winning_path(
     """Return the (row, col) cells along one winning path for ``winner``, or
     ``None`` if ``winner`` has not connected their two goal edges.
 
-    Mirrors ``hexgame.server.game.check_winner`` but tracks BFS parents so we
+    Mirrors ``hexgame_server.game.check_winner`` but tracks BFS parents so we
     can reconstruct a path. Board encoding: 0 empty, -1 player_1 (red,
     left↔right), +1 player_2 (blue, top↔bottom).
     """

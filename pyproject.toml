@@ -1,60 +1,13 @@
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "hexgame"
-dynamic = ["version"]
-description = "FastAPI WebSocket Hex game server with matchmaking, plus reference clients"
-readme = "README.md"
-requires-python = ">=3.10"
-license = { text = "MIT" }
-authors = [{ name = "Cahya Wirawan", email = "cahya.wirawan@gmail.com" }]
-keywords = ["hex", "game", "board-game", "websocket", "fastapi", "matchmaking"]
-classifiers = [
-  "Programming Language :: Python :: 3 :: Only",
-  "Framework :: FastAPI",
-  "Intended Audience :: Developers",
-  "Topic :: Games/Entertainment :: Board Games",
-  "License :: OSI Approved :: MIT License",
-  "Operating System :: OS Independent",
-]
-
-# Core runtime: enough to run the server and the random/model clients.
-dependencies = [
-  "fastapi>=0.95,<0.100",
-  "uvicorn[standard]>=0.22,<0.23",
-  "websockets>=11,<12",
-]
-
-[project.optional-dependencies]
-redis = ["redis>=4.5,<6"]
-postgres = ["sqlalchemy>=2,<3", "psycopg[binary]>=3,<4"]
-gui = ["pygame>=2.5,<3"]
-dev = ["pytest>=7,<8", "pytest-asyncio>=0.21,<0.22", "httpx>=0.24,<0.25"]
-all = ["hexgame[redis,postgres,gui]"]
-
-[project.scripts]
-hexgame-server = "hexgame.server.__main__:main"
-hexgame = "hexgame.client.__main__:main"
-
-[project.urls]
-Homepage = "https://hexgame.codingdojo.ai"
-Source = "https://github.com/cahya-wirawan/hexgame"
-
-[tool.setuptools]
-package-dir = { "" = "src" }
-
-[tool.setuptools.dynamic]
-version = { attr = "hexgame.__version__" }
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-"hexgame.server" = ["static/**/*"]
-"hexgame.client" = ["run_pair.sh"]
+# Repo-root pyproject — owns only the test configuration.
+# The two installable distributions live under client/ and server/:
+#
+#   pip install -e ./client            # `hexgame` — clients
+#   pip install -e ./server[redis,postgres]   # `hexgame-server` — server
+#
+# Running `pytest` from the repo root resolves both packages via the
+# pythonpath entries below, so a full editable install of both isn't required
+# for the in-memory tests (the redis/postgres tests still need those extras).
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["client/src", "server/src"]

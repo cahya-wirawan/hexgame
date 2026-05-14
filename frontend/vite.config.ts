@@ -5,7 +5,7 @@ export default defineConfig({
   base: "/overview/",
   plugins: [react()],
   build: {
-    outDir: "../src/hexgame/server/static/overview",
+    outDir: "../server/src/hexgame_server/static/overview",
     emptyOutDir: true
   },
   server: {

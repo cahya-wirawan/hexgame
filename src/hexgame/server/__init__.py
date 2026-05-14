@@ -1,1 +1,0 @@
-"""Hex game server package."""

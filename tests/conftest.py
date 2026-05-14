@@ -1,6 +1,6 @@
 import pytest
 
-from hexgame.server.main import slot_manager
+from hexgame_server.main import slot_manager
 
 
 @pytest.fixture(autouse=True)

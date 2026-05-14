@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hexgame-server"
+dynamic = ["version"]
+description = "FastAPI WebSocket Hex game server with matchmaking, best-of series, win detection, reconnect, and an optional Redis/PostgreSQL state backend"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Cahya Wirawan", email = "cahya.wirawan@gmail.com" }]
+keywords = ["hex", "game", "board-game", "websocket", "fastapi", "matchmaking", "server"]
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Framework :: FastAPI",
+  "Intended Audience :: Developers",
+  "Topic :: Games/Entertainment :: Board Games",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+
+# Core runtime: enough to start the server and serve matches.
+# The server does NOT depend on the `hexgame` (client) distribution.
+dependencies = [
+  "fastapi>=0.95,<0.100",
+  "uvicorn[standard]>=0.22,<0.23",
+  "websockets>=11,<12",
+]
+
+[project.optional-dependencies]
+redis = ["redis>=4.5,<6"]
+postgres = ["sqlalchemy>=2,<3", "psycopg[binary]>=3,<4"]
+dev = ["pytest>=7,<8", "pytest-asyncio>=0.21,<0.22", "httpx>=0.24,<0.25"]
+all = ["hexgame-server[redis,postgres]"]
+
+[project.scripts]
+hexgame-server = "hexgame_server.__main__:main"
+
+[project.urls]
+Homepage = "https://hexgame.codingdojo.ai"
+Source = "https://github.com/cahya-wirawan/hexgame"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.dynamic]
+version = { attr = "hexgame_server.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"hexgame_server" = ["static/**/*"]

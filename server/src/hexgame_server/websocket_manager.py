@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Iterable
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -86,8 +87,12 @@ class WebSocketGameManager:
 
     async def _receive_loop(self, websocket: WebSocket, assignment: SlotAssignment) -> None:
         while True:
+            raw_text = await websocket.receive_text()
+            if len(raw_text) > 4096:
+                await websocket.send_json(error("Message too large"))
+                continue
             try:
-                raw_message = await websocket.receive_json()
+                raw_message = json.loads(raw_text)
             except ValueError:
                 await websocket.send_json(error("Invalid JSON message"))
                 continue

@@ -23,15 +23,15 @@ classifiers = [
 # Core runtime: enough to start the server and serve matches.
 # The server does NOT depend on the `hexgame` (client) distribution.
 dependencies = [
-  "fastapi>=0.95,<0.100",
-  "uvicorn[standard]>=0.22,<0.23",
-  "websockets>=11,<12",
+  "fastapi>=0.100",
+  "uvicorn[standard]>=0.22",
+  "websockets>=11",
 ]
 
 [project.optional-dependencies]
 redis = ["redis>=4.5,<6"]
 postgres = ["sqlalchemy>=2,<3", "psycopg[binary]>=3,<4"]
-dev = ["pytest>=7,<8", "pytest-asyncio>=0.21,<0.22", "httpx>=0.24,<0.25"]
+dev = ["pytest>=7", "pytest-asyncio>=0.21", "httpx>=0.24"]
 all = ["hexgame-server[redis,postgres]"]
 
 [project.scripts]

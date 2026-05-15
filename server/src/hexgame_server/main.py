@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
@@ -32,6 +33,15 @@ app = FastAPI(
 )
 
 
+@app.middleware("http")
+async def _add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
 def create_slot_manager():
     if STATE_BACKEND == "redis":
         from .redis_slots import RedisSlotManager
@@ -43,6 +53,9 @@ def create_slot_manager():
 
 
 slot_manager = create_slot_manager()
+
+_ip_slot_count: dict[str, int] = defaultdict(int)
+MAX_SLOTS_PER_IP = 2
 
 
 def create_match_repository():
@@ -160,20 +173,31 @@ async def websocket_matchmake(
         await websocket.close(code=1008)
         return
 
-    await websocket.accept()
-    assignment = await slot_manager.join_slot(
-        websocket,
-        board_size,
-        series_length,
-        public_client_label(model_name),
-        public_client_label(username),
-    )
-    if assignment is None:
-        await websocket.send_json(error("No available slot"))
-        await websocket.close()
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    if _ip_slot_count[client_ip] >= MAX_SLOTS_PER_IP:
+        await websocket.accept()
+        await websocket.send_json(error("Too many connections from your IP"))
+        await websocket.close(code=1008)
         return
 
-    await websocket_game_manager.start(websocket, assignment)
+    await websocket.accept()
+    _ip_slot_count[client_ip] += 1
+    try:
+        assignment = await slot_manager.join_slot(
+            websocket,
+            board_size,
+            series_length,
+            public_client_label(model_name),
+            public_client_label(username),
+        )
+        if assignment is None:
+            await websocket.send_json(error("No available slot"))
+            await websocket.close()
+            return
+
+        await websocket_game_manager.start(websocket, assignment)
+    finally:
+        _ip_slot_count[client_ip] -= 1
 
 
 @app.websocket("/ws/join-slot")

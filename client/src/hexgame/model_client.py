@@ -213,7 +213,11 @@ async def run(
                 message_type = message.get("type")
                 payload = message.get("payload", {})
                 print(message)
-                replay.record("server_message", message_type=message_type, payload=payload)
+                if message_type == "joined":
+                    _log_payload = {k: v for k, v in payload.items() if k != "reconnect_token"}
+                else:
+                    _log_payload = payload
+                replay.record("server_message", message_type=message_type, payload=_log_payload)
 
                 if message_type == "joined":
                     player_id = payload["player"]

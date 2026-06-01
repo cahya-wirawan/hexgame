@@ -435,16 +435,15 @@ function DocsPage() {
           <span className="docs-icon">
             <Terminal className="h-5 w-5" />
           </span>
-          <h2>1. Use the hosted server</h2>
-          <p>The provided clients default to <strong>wss://hexgame.codingdojo.ai</strong>, so you can connect models to the hosted arena without running the server locally. Install the client dependencies, add or choose a model, then start a client.</p>
+          <h2>1. Install and connect</h2>
+          <p>The project ships two PyPI distributions: <strong>hexgame</strong> (the clients) and <strong>hexgame-server</strong> (the server). Install just <strong>hexgame</strong> to play against the hosted arena — it pulls in <strong>websockets</strong> only, no FastAPI/uvicorn.</p>
           <pre>
-            <code>{`git clone https://github.com/cahya-wirawan/hex-game-server.git
-cd hex-game-server
-python -m pip install -r requirements.txt
-python -m examples.hex_client --model-name model_random --board-size 7
-python -m examples.hex_client_gui --model-name human --board-size 7`}</code>
+            <code>{`pip install "hexgame[gui]"
+
+hexgame play --model-name model_random --board-size 7
+hexgame gui  --model-name human        --board-size 7`}</code>
           </pre>
-          <p>Open the hosted dashboard at <strong>https://hexgame.codingdojo.ai/overview</strong> to watch slots and match state.</p>
+          <p>Both commands default to <strong>wss://hexgame.codingdojo.ai</strong>. Watch live slot state at <strong>https://hexgame.codingdojo.ai/overview</strong>.</p>
         </article>
 
         <article className="docs-card">
@@ -452,13 +451,13 @@ python -m examples.hex_client_gui --model-name human --board-size 7`}</code>
             <Swords className="h-5 w-5" />
           </span>
           <h2>2. Start matches</h2>
-          <p>Use either matchmaking or a specific waiting slot. Board sizes and series lengths are validated by the server. The <strong>--server</strong> argument is optional for the hosted server because it is already the default.</p>
+          <p>Use either matchmaking (board size + series length) or a specific waiting slot. The server validates both. <strong>--server</strong> is optional — the hosted endpoint is the default.</p>
           <pre>
-            <code>{`python -m examples.hex_client --board-size 7 --series-length 3 --model-name model_dqn
-python -m examples.hex_client_gui --model-name human --slot-id 1
-python -m examples.hex_client --model-name model_random --server wss://hexgame.codingdojo.ai`}</code>
+            <code>{`hexgame play --board-size 7 --series-length 3 --model-name model_dqn
+hexgame gui  --model-name human --slot-id 1
+hexgame play --model-name model_random --server ws://localhost:8000`}</code>
           </pre>
-          <p>Use <strong>--keep-slot</strong> when the first player should stay in the slot and wait for the next opponent after a series ends.</p>
+          <p>Use <strong>--keep-slot</strong> to stay in the slot and wait for another opponent after a series ends. <strong>--username</strong> defaults to your OS user; pass <strong>--username ""</strong> to play anonymously.</p>
         </article>
 
         <article className="docs-card" id="model">
@@ -466,19 +465,16 @@ python -m examples.hex_client --model-name model_random --server wss://hexgame.c
             <Code2 className="h-5 w-5" />
           </span>
           <h2>3. Add a new ML model</h2>
-          <p>The simplest workflow is to copy <strong>examples/model_random.py</strong> to a new file such as <strong>examples/model_my_agent.py</strong>, then replace the logic inside <strong>agent</strong>. Return one legal move from the provided <strong>action_set</strong>.</p>
+          <p>Drop a Python file anywhere on disk and pass its path to <strong>--model-name</strong>. The client loads it with <strong>importlib.util</strong> — no <strong>PYTHONPATH</strong> setup, and sibling imports next to the file work.</p>
           <pre>
-            <code>{`cp examples/model_random.py examples/model_my_agent.py
-
-# examples/model_my_agent.py
+            <code>{`# my_agent.py
 from random import choice
 
 def agent(board, action_set):
-    # board contains 0, -1, and 1
-    # action_set contains legal (row, col) moves
+    # board contains 0, -1, 1; action_set is the list of legal (row, col) moves
     return choice(list(action_set))`}</code>
           </pre>
-          <p>The client adapter expects numeric players: <strong>-1</strong> for red/player_1 and <strong>1</strong> for blue/player_2. The model returns <strong>(row, col)</strong>; the client converts it to the server <strong>{"{q, r}"}</strong> payload.</p>
+          <p>The model sees board values <strong>0</strong> (empty), <strong>-1</strong> (red/player_1), <strong>1</strong> (blue/player_2). It returns <strong>(row, col)</strong>; the client converts to the server <strong>{"{q, r}"}</strong> payload and rejects illegal moves before they leave the process.</p>
         </article>
 
         <article className="docs-card">
@@ -486,13 +482,13 @@ def agent(board, action_set):
             <Activity className="h-5 w-5" />
           </span>
           <h2>4. Wire the model into a client</h2>
-          <p>Run the new module by passing its filename stem to either provided client. The clients dynamically import <strong>examples/model_my_agent.py</strong> when you use <strong>--model-name model_my_agent</strong>.</p>
+          <p><strong>--model-name</strong> accepts four forms, resolved in this order: a file path (contains <strong>/</strong> or ends in <strong>.py</strong>), a bundled name (<strong>model_random</strong>, <strong>model_first</strong>), a top-level module on <strong>sys.path</strong>, then <strong>examples.&lt;NAME&gt;</strong> for repo checkouts.</p>
           <pre>
-            <code>{`python -m examples.hex_client --model-name model_my_agent --board-size 7
-python -m examples.hex_client_gui --model-name model_my_agent --board-size 7
-python -m examples.hex_client --model-name model_my_agent --slot-id 1`}</code>
+            <code>{`hexgame play --model-name ./my_agent.py --board-size 7
+hexgame gui  --model-name model_random  --board-size 7
+hexgame play --model-name my_agent --slot-id 1`}</code>
           </pre>
-          <p>For a quick smoke test, run your new model against <strong>model_random</strong> or the GUI human client and watch <strong>/overview</strong>. If the model returns a move that is not in <strong>action_set</strong>, the client rejects it before sending anything illegal to the server.</p>
+          <p>Run it against <strong>model_random</strong> or the GUI human client for a quick smoke test. Match results are visible in <strong>/overview</strong> and aggregated into the leaderboard at <strong>/statistics</strong>.</p>
         </article>
 
         <article className="docs-card" id="protocol">
@@ -503,9 +499,11 @@ python -m examples.hex_client --model-name model_my_agent --slot-id 1`}</code>
           <ul>
             <li>Join matchmaking with <strong>/ws/matchmake?board_size=7&amp;series_length=3&amp;model_name=name&amp;username=owner</strong>.</li>
             <li>Join a waiting slot with <strong>/ws/join-slot?slot_id=1&amp;model_name=name&amp;username=owner</strong>.</li>
+            <li>Resume an interrupted match with <strong>/ws/reconnect?slot_id=1&amp;token=&lt;token&gt;</strong> (token printed on the first <strong>joined</strong> message).</li>
             <li>Send moves as <strong>{"{ type: 'move', payload: { q, r } }"}</strong>.</li>
-            <li>Player goals are red/player_1 left-to-right and blue/player_2 top-to-bottom.</li>
-            <li>Rejected moves return <strong>move_rejected</strong>; accepted moves are broadcast to both players.</li>
+            <li>Red/player_1 connects left-to-right; blue/player_2 connects top-to-bottom.</li>
+            <li><strong>game_start</strong> and the <strong>reconnected.slot</strong> snapshot carry <strong>player_models</strong> and <strong>player_usernames</strong>, keyed by string IDs <strong>"-1"</strong> and <strong>"1"</strong>.</li>
+            <li>Illegal moves return <strong>move_rejected</strong>; accepted moves are broadcast to both players.</li>
           </ul>
         </article>
 
@@ -514,14 +512,18 @@ python -m examples.hex_client --model-name model_my_agent --slot-id 1`}</code>
             <Database className="h-5 w-5" />
           </span>
           <h2>6. Run your own server</h2>
-          <p>Local server installation is optional. Start FastAPI locally, then point clients at <strong>ws://localhost:8000</strong> with <strong>--server</strong>. Use Redis for shared active slot/session state and PostgreSQL for completed-series history when needed.</p>
+          <p>Install <strong>hexgame-server</strong> separately (it depends on FastAPI/uvicorn). Point clients at <strong>ws://localhost:8000</strong>. Use Redis for shared active state across worker processes and PostgreSQL for completed-series history.</p>
           <pre>
-            <code>{`python -m uvicorn app.main:app --port 8000
-python -m examples.hex_client --model-name model_my_agent --server ws://localhost:8000
+            <code>{`pip install "hexgame-server[all]"
+hexgame-server --port 8000
 
-HEX_STATE_BACKEND=redis
-HEX_REDIS_URL=redis://localhost:6379/0
-HEX_DATABASE_URL=postgresql+asyncpg://hexgame:hexgame@localhost:5432/hexgame
+# multi-worker + persistence:
+HEX_STATE_BACKEND=redis \\
+HEX_REDIS_URL=redis://localhost:6379/0 \\
+HEX_DATABASE_URL=postgresql+psycopg://hexgame:hexgame@localhost:5432/hexgame \\
+hexgame-server --port 8000 --workers 4
+
+# Or Docker:
 docker compose up --build`}</code>
           </pre>
         </article>

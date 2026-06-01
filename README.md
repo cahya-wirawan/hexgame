@@ -23,9 +23,10 @@ The current implementation covers Phases 1-7 from `PLAN.md`:
 - `/` project landing page, `/docs` usage guide, `/overview` monitoring page,
   and `/statistics` model leaderboard.
 - Model-driven clients, including a pygame GUI client for visual board output.
-- GUI niceties: winning-path highlight in gold, configurable pause between
-  games of a series (`--match-delay`, SPACE to skip), opponent's model name
-  and username shown in the side panel, version in the window title.
+- GUI niceties: winning path drawn with a solid black hex fill (so red and
+  blue stones pop on the result screen), configurable pause between games of
+  a series (`--match-delay`, SPACE to skip), opponent's model name and
+  username shown in the side panel, version in the window title.
 - Reconnect tokens, `/ws/reconnect`, and a `--reconnect-token` CLI flag on the
   clients for resuming an interrupted match.
 - Optional Redis-backed slot, game, session, and reconnect-token state.
@@ -315,8 +316,23 @@ Serves the built model statistics and leaderboard page.
 
 `GET /api/statistics`
 
-Returns completed-series statistics. If database history is disabled, the
-response is empty and `persistence_enabled` is `false`.
+Returns completed-series statistics aggregated from the `completed_series`
+table. If database history is disabled (no `HEX_DATABASE_URL`), the response
+is empty and `persistence_enabled` is `false`.
+
+The `leaderboard` array is sorted by, in descending order:
+1. **`wins`** — number of series wins (primary).
+2. **`win_rate`** — `wins / matches` (tiebreaker).
+3. **`games_won - games_lost`** — individual-game differential.
+4. **`model_name`** — alphabetical (final tiebreaker).
+
+Entries are keyed on the `(model_name, username)` pair, so the same model
+played by different users appears as separate rows. `wins`/`losses` count
+series; `games_won`/`games_lost` count individual games inside those series.
+The ranking rewards volume — a model that plays 100 series and wins 55 will
+rank above one that played 10 and won all 10. See
+[`server/src/hexgame_server/database.py`](server/src/hexgame_server/database.py)
+`statistics()` for the implementation.
 
 Example:
 
@@ -763,8 +779,11 @@ def agent(board, action_set):
 
 1. A **filesystem path** (`./examples/model_dqn.py`, `/abs/path.py`, or any
    value containing `/` or ending in `.py`). Loaded directly with
-   `importlib.util`, so no `sys.path` / `PYTHONPATH` setup is needed. This is
-   the most reliable form for unpackaged models.
+   `importlib.util`, so no `sys.path` / `PYTHONPATH` setup is needed. The
+   file's parent directory is added to `sys.path` before loading, so
+   **sibling imports work** — e.g. `examples/model_dqn_mcts.py` can `import
+   model_dqn` and find `examples/model_dqn.py` next to it. This is the most
+   reliable form for unpackaged models.
 2. A **bundled model** name: `hexgame.models.<NAME>` — currently
    `model_random` and `model_first`.
 3. A **top-level module** name on `sys.path` — drop `my_agent.py` in your
@@ -839,6 +858,12 @@ board size and series length from the server:
 hexgame play --model-name model_random --slot-id 3
 ```
 
+The **`--username`** flag controls the public owner label shown in the
+**Opponent** panel row and in `/slots` / `/overview`. If omitted, both `hexgame
+play` and `hexgame gui` fall back to `getpass.getuser()` — i.e. the OS account
+running the command (typically `$USER`). Pass `--username ""` to connect
+anonymously.
+
 To **resume an interrupted match**, pass `--slot-id` together with
 `--reconnect-token`. The token is printed to stdout on the first `joined`
 message (look for a line like `reconnect: slot 3 token a1b2c3d4e5`) and is
@@ -878,9 +903,10 @@ version (`Hex Client v<version>`). The side panel shows:
 - **Last move** coordinates
 
 On the board, the last move gets a yellow ring, and when a game ends the
-**winning path** is highlighted with a thick gold border on the cells that
-connect the two goal edges (computed locally with the same BFS the server
-uses).
+**winning path** is highlighted with a solid black hex fill on the cells that
+connect the two goal edges — the red and blue stones along the path stay on
+top of the black fill, making the chain immediately obvious. The path is
+computed locally with the same BFS the server uses.
 
 When playing a multi-game series, the GUI **pauses on the final board between
 games** so you can see the result before it resets. The pause is

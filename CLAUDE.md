@@ -64,7 +64,7 @@ Client A <--WebSocket--> FastAPI Server <--WebSocket--> Client B
 
 - `main.py` — routes, global `slot_manager`, static/landing/overview/statistics serving, `/health`, `/slots`, `/api/statistics`.
 - `config.py` — `MAX_SLOTS`, `ALLOWED_BOARD_SIZES = {7,9,11,13,19}`, allowed series lengths, `PROTOCOL_VERSION`, `PLAYER_1 = -1` / `PLAYER_2 = 1`, `PLAYER_COLORS`, `RECONNECT_TIMEOUT_SECONDS`, Redis/DB env config.
-- `models.py` — `GameSlot`, `PlayerConnection`, `SlotAssignment`, `HexGameState`, `MatchSeriesState`. The `snapshot()` method on `GameSlot` is the canonical public view (used by `/slots` and used inside `websocket_manager._slot_labels_from_slot`).
+- `models.py` — `GameSlot`, `PlayerConnection`, `SlotAssignment`, `HexGameState`, `MatchSeriesState`. `GameSlot.snapshot()` is the canonical public view (used by `/slots` and the `reconnected.slot` payload). The lighter `websocket_manager._slot_labels_from_slot` walks `slot.player_{1,2}` directly to avoid building a full snapshot when only `player_models` / `player_usernames` are needed (e.g. inside `game_start`).
 - `protocol.py` — message parsing + outgoing message factories.
 - `slots.py` — `SlotManager`: matchmaking, locking, slot lifecycle, best-of series. `redis_slots.py` — `RedisSlotManager` subclass for shared state.
 - `game.py` — move validation, win detection (BFS/DFS).

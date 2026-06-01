@@ -11,7 +11,7 @@ hexgame gui      # pygame GUI model client (requires the [gui] extra)
 ## Install
 
 ```bash
-pip install hexgame            # server + random/model clients
+pip install hexgame            # random/model clients (websockets only)
 pip install "hexgame[gui]"     # also the pygame GUI
 ```
 

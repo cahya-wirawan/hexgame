@@ -115,6 +115,8 @@ class SlotManager:
             return slot.snapshot()
 
     async def reconnect_slot(self, websocket: WebSocket, slot_id: int, token: str) -> tuple[SlotAssignment | None, str | None]:
+        stale_websocket = None
+
         async with self.lock:
             slot = self.slots.get(slot_id)
             if slot is None or slot.state == "empty":
@@ -123,15 +125,34 @@ class SlotManager:
             for connection in (slot.player_1, slot.player_2):
                 if connection is None:
                     continue
-                if secrets.compare_digest(connection.reconnect_token, token):
-                    if connection.connected:
-                        return None, "Player is already connected"
-                    connection.websocket = websocket
-                    connection.connected = True
-                    connection.disconnected_at = None
-                    return self._assignment(slot, connection.player_id), None
+                if not secrets.compare_digest(connection.reconnect_token, token):
+                    continue
 
-            return None, "Invalid reconnect token"
+                # Token matches — this client owns this seat.
+                # If still marked connected, the old WebSocket hasn't received its
+                # disconnect event yet (page-reload race). Save it for cleanup below.
+                if connection.connected and connection.websocket is not None:
+                    stale_websocket = connection.websocket
+
+                # Rotate the token so any in-flight disconnect handler for the
+                # stale connection won't match and won't evict the new session.
+                connection.reconnect_token = secrets.token_urlsafe(32)
+                connection.websocket = websocket
+                connection.connected = True
+                connection.disconnected_at = None
+                assignment = self._assignment(slot, connection.player_id)
+                break
+            else:
+                return None, "Invalid reconnect token"
+
+        # Close the stale WebSocket outside the lock — async I/O must not hold it.
+        if stale_websocket is not None:
+            try:
+                await stale_websocket.close(code=1001)
+            except Exception:
+                pass
+
+        return assignment, None
 
     async def reset_slot(self, slot_id: int, expected_player_id: int | None = None) -> PlayerConnection | None:
         async with self.lock:

@@ -4,6 +4,7 @@ import {
   BookOpen,
   Code2,
   Database,
+  Gamepad2,
   GitBranch,
   History,
   Medal,
@@ -18,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader } from "./components/ui/card";
+import { PlayPage } from "./pages/PlayPage";
 
 type SlotState = "empty" | "waiting" | "full";
 
@@ -187,6 +189,7 @@ function LandingPage({ totals }: { totals: Record<SlotState, number> }) {
           </a>
           <div className="nav-links">
             <a href="#architecture">Architecture</a>
+            <a href="/play">Play</a>
             <a href="/overview">Slots</a>
             <a href="/statistics">Stats</a>
             <a href="/docs">Docs</a>
@@ -204,7 +207,11 @@ function LandingPage({ totals }: { totals: Record<SlotState, number> }) {
             reconnect-safe sessions, and live operational monitoring.
           </p>
           <div className="hero-actions">
-            <a className="primary-link" href="/overview">
+            <a className="primary-link" href="/play">
+              <Gamepad2 className="h-4 w-4" />
+              Play now
+            </a>
+            <a className="secondary-link" href="/overview">
               <Activity className="h-4 w-4" />
               View live slots
             </a>
@@ -411,6 +418,7 @@ function DocsPage() {
           <span>Hex Game Server</span>
         </a>
         <div className="nav-links">
+          <a href="/play">Play</a>
           <a href="/overview">Slots</a>
           <a href="/statistics">Stats</a>
           <a href="#run">Run</a>
@@ -588,6 +596,7 @@ function StatisticsPage({
           <span>Hex Game Server</span>
         </a>
         <div className="nav-links">
+          <a href="/play">Play</a>
           <a href="/overview">Slots</a>
           <a href="/statistics">Stats</a>
           <a href="/docs">Docs</a>
@@ -763,6 +772,7 @@ export default function App() {
   const isOverviewPage = currentPath === "/overview";
   const isDocsPage = currentPath === "/docs";
   const isStatisticsPage = currentPath === "/statistics";
+  const isPlayPage = currentPath === "/play";
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -816,6 +826,10 @@ export default function App() {
       { empty: 0, waiting: 0, full: 0 } as Record<SlotState, number>
     );
   }, [slots]);
+
+  if (isPlayPage) {
+    return <PlayPage />;
+  }
 
   if (isDocsPage) {
     return <DocsPage />;

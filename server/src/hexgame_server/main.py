@@ -145,6 +145,11 @@ def docs():
     return frontend_index()
 
 
+@app.get("/play")
+def play():
+    return frontend_index()
+
+
 def public_client_label(raw_value: Optional[str], *, max_length: int = 80) -> Optional[str]:
     if raw_value is None:
         return None

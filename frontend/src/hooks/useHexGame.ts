@@ -200,10 +200,11 @@ export function useHexGame() {
   }, []);
 
   const join = useCallback(
-    (username: string, boardSize: number, seriesLength: number) => {
+    (username: string, boardSize: number, seriesLength: number, firstPlayer?: number) => {
       close();
       setState({ ...INITIAL, phase: "waiting", boardSize, seriesLength });
-      const url = `${wsBase()}/ws/matchmake?board_size=${boardSize}&series_length=${seriesLength}&model_name=human&username=${encodeURIComponent(username)}`;
+      let url = `${wsBase()}/ws/matchmake?board_size=${boardSize}&series_length=${seriesLength}&model_name=human&username=${encodeURIComponent(username)}`;
+      if (firstPlayer !== undefined) url += `&first_player=${firstPlayer}`;
       attachHandlers(new WebSocket(url), wsRef, setState);
     },
     [close]

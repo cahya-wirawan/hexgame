@@ -45,13 +45,21 @@ class MatchSeriesState:
     player_2_wins: int = 0
     current_game_number: int = 1
     series_winner: int | None = None
+    initial_first_player: int = PLAYER_1
 
     @classmethod
-    def create(cls, series_length: int) -> "MatchSeriesState":
-        return cls(series_length=series_length, wins_required=(series_length // 2) + 1)
+    def create(cls, series_length: int, first_player: int = PLAYER_1) -> "MatchSeriesState":
+        return cls(
+            series_length=series_length,
+            wins_required=(series_length // 2) + 1,
+            initial_first_player=first_player,
+        )
 
     def first_turn(self) -> int:
-        return PLAYER_1 if self.current_game_number % 2 == 1 else PLAYER_2
+        # Odd games: initial_first_player starts; even games: the other player starts.
+        if self.current_game_number % 2 == 1:
+            return self.initial_first_player
+        return PLAYER_2 if self.initial_first_player == PLAYER_1 else PLAYER_1
 
     def record_win(self, winner: int) -> None:
         if winner == PLAYER_1:

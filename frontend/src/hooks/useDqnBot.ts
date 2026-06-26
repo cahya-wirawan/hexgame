@@ -464,7 +464,7 @@ export function useDqnBot() {
   }, []);
 
   const start = useCallback(
-    async (boardSize: number, mode: BotMode = "dqn"): Promise<number> => {
+    async (boardSize: number, mode: BotMode = "dqn", seriesLength: number = 1, firstPlayer: number = -1): Promise<number> => {
       stop();
       setPhase("loading");
       modeRef.current = mode;
@@ -484,7 +484,7 @@ export function useDqnBot() {
       setPhase("connecting");
 
       return new Promise<number>((resolve, reject) => {
-        const url = `${wsBase()}/ws/matchmake?board_size=${boardSize}&series_length=1&model_name=dqn&username=DQN+Bot`;
+        const url = `${wsBase()}/ws/matchmake?board_size=${boardSize}&series_length=${seriesLength}&model_name=dqn&username=DQN+Bot&first_player=${firstPlayer}`;
         const ws = new WebSocket(url);
         wsRef.current = ws;
 

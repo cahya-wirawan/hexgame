@@ -1094,6 +1094,12 @@ html {
   border-color: #3a5bd9;
 }
 
+.play-dqn-config {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .play-dqn-mode-row {
   display: flex;
   gap: 6px;

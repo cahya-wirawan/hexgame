@@ -51,22 +51,33 @@ const BOT_MODES: { mode: BotMode; label: string; detail: string }[] = [
   { mode: "mcts",    label: "MCTS",      detail: "200 sims, PUCT" },
 ];
 
+// -1 = PLAYER_1 (red) starts; 1 = PLAYER_2 (blue) starts; 0 = random (resolved client-side)
+type FirstPlayerChoice = -1 | 1 | 0;
+
+function resolveFirstPlayer(choice: FirstPlayerChoice): number {
+  if (choice === 0) return Math.random() < 0.5 ? -1 : 1;
+  return choice;
+}
+
 function Lobby({
   onJoin,
   onJoinSlot,
   onPlayVsDqn,
   dqnLoading,
 }: {
-  onJoin: (username: string, boardSize: number, seriesLength: number) => void;
+  onJoin: (username: string, boardSize: number, seriesLength: number, firstPlayer: number) => void;
   onJoinSlot: (username: string, slotId: number) => void;
-  onPlayVsDqn: (username: string, boardSize: number, mode: BotMode) => void;
+  onPlayVsDqn: (username: string, boardSize: number, mode: BotMode, seriesLength: number, firstPlayer: number) => void;
   dqnLoading: boolean;
 }) {
   const [username, setUsername] = useState("");
   const [boardSize, setBoardSize] = useState<number>(7);
   const [seriesLength, setSeriesLength] = useState<number>(1);
+  const [firstPlayerChoice, setFirstPlayerChoice] = useState<FirstPlayerChoice>(-1);
   const [dqnBoardSize, setDqnBoardSize] = useState<number>(7);
+  const [dqnSeriesLength, setDqnSeriesLength] = useState<number>(1);
   const [botMode, setBotMode] = useState<BotMode>("dqn");
+  const [dqnFirstPlayer, setDqnFirstPlayer] = useState<FirstPlayerChoice>(-1);
   const [waitingSlots, setWaitingSlots] = useState<WaitingSlot[]>([]);
 
   useEffect(() => {
@@ -176,27 +187,52 @@ function Lobby({
               </label>
             ))}
           </div>
-          <div className="play-dqn-row">
-            <div className="play-chips play-chips-compact">
-              {DQN_SIZES.map((s) => (
-                <label key={s} className={`play-chip ${dqnBoardSize === s ? "play-chip-active" : ""}`}>
-                  <input type="radio" name="dqn_board_size" value={s} checked={dqnBoardSize === s} onChange={() => setDqnBoardSize(s)} />
-                  {s}×{s}
-                </label>
-              ))}
-            </div>
-            <Button
-              className="play-dqn-btn"
-              onClick={() => onPlayVsDqn(username.trim() || "anonymous", dqnBoardSize, botMode)}
-              disabled={dqnLoading}
-            >
-              {dqnLoading ? (
-                <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
-              ) : (
-                <><Bot className="h-3.5 w-3.5" />Play vs {BOT_MODES.find(m => m.mode === botMode)?.label ?? "DQN"}</>
-              )}
-            </Button>
+          <div className="play-dqn-config">
+            <fieldset className="play-fieldset">
+              <legend className="play-label">Board size</legend>
+              <div className="play-chips play-chips-compact">
+                {DQN_SIZES.map((s) => (
+                  <label key={s} className={`play-chip ${dqnBoardSize === s ? "play-chip-active" : ""}`}>
+                    <input type="radio" name="dqn_board_size" value={s} checked={dqnBoardSize === s} onChange={() => setDqnBoardSize(s)} />
+                    {s}×{s}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="play-fieldset">
+              <legend className="play-label">Series</legend>
+              <div className="play-chips play-chips-compact">
+                {SERIES_LENGTHS.map((l) => (
+                  <label key={l} className={`play-chip ${dqnSeriesLength === l ? "play-chip-active" : ""}`}>
+                    <input type="radio" name="dqn_series_length" value={l} checked={dqnSeriesLength === l} onChange={() => setDqnSeriesLength(l)} />
+                    Bo{l}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="play-fieldset">
+              <legend className="play-label">Starts first</legend>
+              <div className="play-chips play-chips-compact">
+                {([[-1, "Bot (red)"], [1, "Me (blue)"], [0, "Random"]] as [FirstPlayerChoice, string][]).map(([v, label]) => (
+                  <label key={v} className={`play-chip ${dqnFirstPlayer === v ? "play-chip-active" : ""}`}>
+                    <input type="radio" name="dqn_first_player" value={v} checked={dqnFirstPlayer === v} onChange={() => setDqnFirstPlayer(v)} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
+          <Button
+            className="play-dqn-btn"
+            onClick={() => onPlayVsDqn(username.trim() || "anonymous", dqnBoardSize, botMode, dqnSeriesLength, resolveFirstPlayer(dqnFirstPlayer))}
+            disabled={dqnLoading}
+          >
+            {dqnLoading ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
+            ) : (
+              <><Bot className="h-3.5 w-3.5" />Play vs {BOT_MODES.find(m => m.mode === botMode)?.label ?? "DQN"}</>
+            )}
+          </Button>
         </div>
 
         <div className="play-form">
@@ -228,9 +264,21 @@ function Lobby({
             </div>
           </fieldset>
 
+          <fieldset className="play-fieldset">
+            <legend className="play-label">Starts game 1</legend>
+            <div className="play-chips">
+              {([[-1, "Red (default)"], [1, "Blue"], [0, "Random"]] as [FirstPlayerChoice, string][]).map(([v, label]) => (
+                <label key={v} className={`play-chip ${firstPlayerChoice === v ? "play-chip-active" : ""}`}>
+                  <input type="radio" name="first_player" value={v} checked={firstPlayerChoice === v} onChange={() => setFirstPlayerChoice(v)} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
           <Button
             className="play-join-btn"
-            onClick={() => onJoin(username.trim() || "anonymous", boardSize, seriesLength)}
+            onClick={() => onJoin(username.trim() || "anonymous", boardSize, seriesLength, resolveFirstPlayer(firstPlayerChoice))}
           >
             <Gamepad2 className="h-4 w-4" />
             Join matchmaking
@@ -284,11 +332,11 @@ export function PlayPage() {
     joinSlot(username, botSlotId);
   }, [isDqnGame, botSlotId, joinSlot]);
 
-  const handlePlayVsDqn = async (username: string, boardSize: number, mode: BotMode) => {
+  const handlePlayVsDqn = async (username: string, boardSize: number, mode: BotMode, seriesLength: number, firstPlayer: number) => {
     setIsDqnGame(true);
     pendingDqnJoin.current = { username };
     try {
-      await startBot(boardSize, mode);
+      await startBot(boardSize, mode, seriesLength, firstPlayer);
     } catch {
       setIsDqnGame(false);
       pendingDqnJoin.current = null;
@@ -338,7 +386,7 @@ export function PlayPage() {
         <Lobby
           onJoin={join}
           onJoinSlot={joinSlot}
-          onPlayVsDqn={(u, s, m) => void handlePlayVsDqn(u, s, m)}
+          onPlayVsDqn={(u, s, m, sl, fp) => void handlePlayVsDqn(u, s, m, sl, fp)}
           dqnLoading={botPhase === "loading" || botPhase === "connecting"}
         />
       </main>

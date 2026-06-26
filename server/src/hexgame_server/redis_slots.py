@@ -48,10 +48,11 @@ class RedisSlotManager(SlotManager):
         series_length: int = 1,
         model_name: str | None = None,
         username: str | None = None,
+        first_player: int = -1,
     ):
         async with self._redis_lock():
             await self._hydrate_from_redis()
-            assignment = await super().join_slot(websocket, board_size, series_length, model_name, username)
+            assignment = await super().join_slot(websocket, board_size, series_length, model_name, username, first_player=first_player)
             await self._persist_to_redis()
             return assignment
 
@@ -273,6 +274,7 @@ class RedisSlotManager(SlotManager):
             "player_2_wins": series_state.player_2_wins,
             "current_game_number": series_state.current_game_number,
             "series_winner": series_state.series_winner,
+            "initial_first_player": series_state.initial_first_player,
         }
 
     def _series_state_from_dict(self, data: dict[str, Any] | None) -> MatchSeriesState | None:
@@ -285,4 +287,5 @@ class RedisSlotManager(SlotManager):
             player_2_wins=data.get("player_2_wins", 0),
             current_game_number=data.get("current_game_number", 1),
             series_winner=data.get("series_winner"),
+            initial_first_player=data.get("initial_first_player", -1),
         )

@@ -14,6 +14,8 @@ from .config import (
     DATABASE_AUTO_CREATE,
     DATABASE_URL,
     MAX_SLOTS,
+    PLAYER_1,
+    PLAYER_2,
     REDIS_URL,
     STATE_BACKEND,
 )
@@ -170,6 +172,7 @@ async def websocket_matchmake(
     series_length: int = 1,
     model_name: Optional[str] = None,
     username: Optional[str] = None,
+    first_player: Optional[int] = None,
 ):
     if board_size not in ALLOWED_BOARD_SIZES:
         await websocket.accept()
@@ -179,6 +182,11 @@ async def websocket_matchmake(
     if series_length not in ALLOWED_SERIES_LENGTHS:
         await websocket.accept()
         await websocket.send_json(error("Unsupported series length"))
+        await websocket.close(code=1008)
+        return
+    if first_player is not None and first_player not in (PLAYER_1, PLAYER_2):
+        await websocket.accept()
+        await websocket.send_json(error("Invalid first_player value"))
         await websocket.close(code=1008)
         return
 
@@ -198,6 +206,7 @@ async def websocket_matchmake(
             series_length,
             public_client_label(model_name),
             public_client_label(username),
+            first_player=first_player if first_player is not None else PLAYER_1,
         )
         if assignment is None:
             await websocket.send_json(error("No available slot"))

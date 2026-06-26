@@ -26,6 +26,7 @@ class SlotManager:
         series_length: int = 1,
         model_name: str | None = None,
         username: str | None = None,
+        first_player: int = PLAYER_1,
     ) -> SlotAssignment | None:
         async with self.lock:
             slot = self._find_waiting_slot(board_size, series_length) or self._find_empty_slot()
@@ -35,7 +36,7 @@ class SlotManager:
             if slot.state == "empty":
                 slot.board_size = board_size
                 slot.series_length = series_length
-                slot.series_state = MatchSeriesState.create(series_length)
+                slot.series_state = MatchSeriesState.create(series_length, first_player=first_player)
                 slot.player_1 = PlayerConnection(
                     websocket=websocket,
                     player_id=PLAYER_1,

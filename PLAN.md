@@ -1617,6 +1617,38 @@ Players can recover from temporary network drops.
 
 Status: implemented for Redis-backed active match state and PostgreSQL/ORM completed-series history.
 
+---
+
+### Phase 8: Browser play and in-browser bots
+
+Status: implemented.
+
+Implement:
+
+```text
+- Browser play page at /play (Vite/React, served by FastAPI)
+- Human vs human matchmaking from the browser
+- /ws/join-slot endpoint: directly join a specific waiting slot as player_2
+- first_player query parameter on /ws/matchmake (-1 or 1, default -1)
+- initial_first_player field on MatchSeriesState; first_turn() alternates per game
+- In-browser DQN bot (greedy / minimax / MCTS) via ONNX Runtime Web
+- In-browser AlphaZero bot (MCTS, configurable simulations) via ONNX Runtime Web
+- /models/ static file mount for ONNX model files
+- export_dqn_onnx.py and export_alphazero_onnx.py export scripts
+- Strength selector (25/50/100/200/400 sims) for AlphaZero bot
+- Bot/human pairing: bot joins matchmake first → receives slot_id → human joins /ws/join-slot
+- WebSocketDisconnect caught in _safe_send and _reset_after_reconnect_timeout
+```
+
+Goal:
+
+```text
+Players can play Hex in the browser against another human or against a strong
+AI bot (DQN or AlphaZero), with no Python installation required.
+The AI runs entirely in the browser via ONNX Runtime Web; the server only
+handles WebSocket matchmaking and game logic.
+```
+
 Replace in-memory storage with Redis or another shared store.
 
 Use Redis for:

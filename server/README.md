@@ -1,6 +1,6 @@
 # hexgame-server — Hex game server
 
-FastAPI WebSocket Hex game server with matchmaking, best-of series, server-authoritative gameplay, win detection, reconnect tokens, and an optional Redis/PostgreSQL state backend. Ships with a built-in Vite/React dashboard (`/`, `/docs`, `/overview`, `/statistics`).
+FastAPI WebSocket Hex game server with matchmaking, best-of series, server-authoritative gameplay, win detection, reconnect tokens, configurable first-player, and an optional Redis/PostgreSQL state backend. Ships with a built-in Vite/React dashboard (`/`, `/docs`, `/overview`, `/statistics`) and a browser play page at `/play` with in-browser DQN and AlphaZero bots powered by ONNX Runtime Web.
 
 Installing this package gives you the `hexgame-server` command.
 
@@ -28,5 +28,6 @@ Then open:
 - Slot state JSON: <http://127.0.0.1:8000/slots>
 - Overview dashboard: <http://127.0.0.1:8000/overview>
 - Statistics leaderboard: <http://127.0.0.1:8000/statistics>
+- Browser play: <http://127.0.0.1:8000/play>
 
 See the [main repository README](https://github.com/cahya-wirawan/hexgame) for the full server documentation, WebSocket protocol, deployment options (Docker), and design notes.

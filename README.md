@@ -31,6 +31,13 @@ The current implementation covers Phases 1-7 from `PLAN.md`:
   clients for resuming an interrupted match.
 - Optional Redis-backed slot, game, session, and reconnect-token state.
 - Optional PostgreSQL/SQLAlchemy completed-series history.
+- Browser play page at `/play`: human vs human matchmaking, in-browser DQN
+  bot (greedy / minimax / MCTS modes, board sizes 5–13), and in-browser
+  AlphaZero bot (MCTS with 25–400 simulations/move, board sizes 5–11).
+- Configurable first-player choice (Red / Blue / Random) for all play modes
+  via the `first_player` parameter on `/ws/matchmake`.
+- ONNX model serving at `/models/` for browser-local inference via ONNX
+  Runtime Web.
 
 User accounts and ratings are intentionally not implemented yet.
 
@@ -118,6 +125,7 @@ Open:
 - Documentation: `https://hexgame.codingdojo.ai/docs`
 - Overview dashboard: `https://hexgame.codingdojo.ai/overview`
 - Statistics leaderboard: `https://hexgame.codingdojo.ai/statistics`
+- Browser play: `https://hexgame.codingdojo.ai/play`
 
 ## Running A Local Server
 
@@ -135,6 +143,7 @@ Then open:
 - Documentation: `http://127.0.0.1:8000/docs`
 - Overview dashboard: `http://127.0.0.1:8000/overview`
 - Statistics leaderboard: `http://127.0.0.1:8000/statistics`
+- Browser play: `http://127.0.0.1:8000/play`
 - OpenAPI/Swagger UI: `http://127.0.0.1:8000/api/docs`
 
 Point clients at the local server with `--server`:
@@ -377,18 +386,25 @@ Allowed series lengths:
 `series_length` defaults to `1`. The server only matches players who request
 the same board size and the same series length.
 
-Clients may include `model_name` and `username` to display non-secret model
-labels and owner names in `/slots` and `/overview`:
+Optional query parameters:
+
+- `model_name` — public label shown in `/slots` and `/overview`.
+- `username` — public owner name shown in `/slots` and `/overview`.
+- `first_player` — which player moves first in game 1: `-1` (red, default)
+  or `1` (blue). Subsequent games in a series alternate automatically.
+
+Example:
 
 ```text
-/ws/matchmake?board_size=11&series_length=3&model_name=model_alphazero&username=alice
+/ws/matchmake?board_size=11&series_length=3&model_name=model_alphazero&username=alice&first_player=-1
 ```
 
 `/ws/join-slot?slot_id=1`
 
 Joins a specific waiting slot as `player_2`. The joining client inherits the
 board size, series length, wins required, and current score rules already set
-by `player_1` in that slot.
+by `player_1` in that slot. Optional `model_name` and `username` query
+parameters work the same as in `/ws/matchmake`.
 
 `/ws/reconnect?slot_id=1&token=<reconnect_token>`
 
@@ -660,8 +676,9 @@ messages, and any extra `player` field in a move payload is ignored.
 - A series is best-of `1`, `3`, `5`, `7`, `9`, `11`, `13`, or `15` games
   between the same players.
 - The series ends as soon as a player reaches `ceil(series_length / 2)` wins.
-- First turn alternates by game number: odd games start with `player_1` (`-1`),
-  even games start with `player_2` (`1`).
+- First turn in game 1 is set by `first_player` (default: `player_1` / `-1` /
+  red). Subsequent games alternate: odd-numbered games use `first_player`,
+  even-numbered games use the other player.
 - Coordinates are `(q, r)`.
 - Board access is `board[r][q]`.
 - `player_1` (`-1`, red) wins by connecting left to right.
@@ -964,6 +981,71 @@ label from the server's snapshot:
 hexgame gui --slot-id 3 --reconnect-token a1b2c3d4e5
 ```
 
+## Browser Play
+
+The server ships a browser play page at `/play`. No client installation is
+required — open it in any modern browser.
+
+### Human vs Human
+
+Click **Play vs Human** to enter the matchmaking queue with a chosen board
+size and series length. Two players who open `/play` at the same time are
+paired into the same slot.
+
+### DQN Bot
+
+Click **Play vs DQN Bot** to play against a DQN (Deep Q-Network) bot that
+runs entirely in the browser using [ONNX Runtime Web](https://onnxruntime.ai/docs/get-started/with-javascript/web.html).
+Three algorithm modes are available:
+
+| Mode | Description |
+|---|---|
+| Greedy | Picks the move with the highest Q-value. |
+| Minimax | 2-ply negamax α-β search, Q-value move ordering. |
+| MCTS | 200-simulation MCTS with softmax Q-value prior. |
+
+Supported board sizes: 5, 7, 9, 11, 13.
+
+### AlphaZero Bot
+
+Click **Play vs AlphaZero** to play against a ResNet-based AlphaZero bot
+(also fully in-browser). Strength is the number of MCTS simulations per move:
+
+| Simulations | Note |
+|---|---|
+| 25 | Fast / weaker |
+| 50 | — |
+| 100 | Default |
+| 200 | — |
+| 400 | Slow / strongest |
+
+Supported board sizes: 5, 7, 9, 11.
+
+### Common options
+
+All play modes offer:
+
+- **Series length** — best-of 1, 3, 5, 7, 9, 11, 13, or 15.
+- **Starts first** — Red, Blue, or Random.
+
+### ONNX model export
+
+The ONNX files are prebuilt and committed to
+`server/src/hexgame_server/static/models/`. To regenerate them from local
+checkpoints (requires PyTorch and the `.pt` weight files in `examples/`):
+
+```bash
+# DQN models (sizes 5, 7, 9, 11, 13, 15)
+python examples/export_dqn_onnx.py
+
+# AlphaZero models (sizes 5, 7, 9, 11)
+python examples/export_alphazero_onnx.py
+```
+
+Both scripts write `{model}_{N}x{N}.onnx` into
+`server/src/hexgame_server/static/models/`. FastAPI mounts that directory at
+`/models/` so the browser fetches the ONNX files directly.
+
 ## Tests
 
 Install the dev + optional dependencies, then run pytest from the repo root.
@@ -1037,13 +1119,18 @@ server/                              -> distribution `hexgame-server`, console c
     game.py                          Move validation and win detection
     websocket_manager.py             WebSocket receive loop and gameplay handling
     static/overview/                 Built Vite dashboard (shipped in the server wheel)
+    static/models/                   ONNX models for browser bots (shipped in the server wheel)
 
-frontend/                            Vite + React source for the dashboard.
+frontend/                            Vite + React source for the dashboard and play page.
   vite.config.ts                     Builds into server/src/hexgame_server/static/overview/
+  src/pages/PlayPage.tsx             Browser play page (human vs human / DQN / AlphaZero)
+  src/hooks/useDqnBot.ts             DQN bot hook (greedy / minimax / MCTS)
+  src/hooks/useAlphaZeroBot.ts       AlphaZero MCTS bot hook
 
 examples/                            Heavy/optional ML extras (not part of either package):
                                      model_alphazero.py, model_dqn*.py, *.pt weights,
-                                     hex_mcts.cpp, setup_mcts.py.
+                                     hex_mcts.cpp, setup_mcts.py,
+                                     export_dqn_onnx.py, export_alphazero_onnx.py.
 
 tests/                               Unit + integration tests. pyproject `pythonpath` makes
                                      both `client/src/` and `server/src/` importable

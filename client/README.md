@@ -32,4 +32,8 @@ Point at your own server with `--server`:
 hexgame gui --server ws://127.0.0.1:8000 --model-name human --board-size 7
 ```
 
+You can also play directly in the browser at `https://hexgame.codingdojo.ai/play` —
+no installation needed. The browser play page supports human vs human matchmaking,
+an in-browser DQN bot (greedy / minimax / MCTS), and an in-browser AlphaZero bot.
+
 See the [main repository README](https://github.com/cahya-wirawan/hexgame) for the full client documentation, model authoring guide, replay log format, and WebSocket protocol.

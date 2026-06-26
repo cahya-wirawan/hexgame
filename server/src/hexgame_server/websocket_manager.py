@@ -294,7 +294,7 @@ class WebSocketGameManager:
                 opponent_disconnected(RECONNECT_TIMEOUT_SECONDS, reason="reconnect_timeout")
             )
             await remaining.websocket.close()
-        except RuntimeError:
+        except (RuntimeError, WebSocketDisconnect):
             pass
 
     async def _broadcast_connections(
@@ -312,7 +312,7 @@ class WebSocketGameManager:
             return
         try:
             await connection.websocket.send_json(outbound)
-        except RuntimeError:
+        except (RuntimeError, WebSocketDisconnect):
             await self.handle_disconnect(slot_id, connection.player_id, connection.reconnect_token)
 
     def _reconnect_token(self, assignment: SlotAssignment) -> str:

@@ -161,21 +161,21 @@ function Lobby({
             onClick={() => setSelectedMode("dqn")}
           >
             <Bot className="h-3.5 w-3.5" />
-            DQN Bot
+            Local DQN
           </button>
           <button
             className={`play-mode-tab${selectedMode === "az" ? " play-mode-tab-active play-mode-tab-az" : ""}`}
             onClick={() => setSelectedMode("az")}
           >
             <Bot className="h-3.5 w-3.5" />
-            AlphaZero
+            Local Alphazero
           </button>
           <button
             className={`play-mode-tab${selectedMode === "human" ? " play-mode-tab-active play-mode-tab-human" : ""}`}
             onClick={() => setSelectedMode("human")}
           >
             <Swords className="h-3.5 w-3.5" />
-            vs Human
+            Remote Player
             {waitingSlots.length > 0 && (
               <span className="play-mode-badge">{waitingSlots.length}</span>
             )}
@@ -304,7 +304,7 @@ function Lobby({
               {azLoading ? (
                 <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
               ) : (
-                <><Bot className="h-3.5 w-3.5" />Play vs AlphaZero</>
+                <><Bot className="h-3.5 w-3.5" />Play vs Local Alphazero</>
               )}
             </Button>
           </div>
@@ -406,14 +406,14 @@ function Lobby({
           <div className="play-rules-mode">
             <span className="play-rules-mode-badge" style={{ background: "#3a5bd9" }}>DQN</span>
             <div>
-              <strong>DQN Bot</strong>
+              <strong>Local DQN</strong>
               <p>Greedy, Minimax (α-β), or MCTS strategy using a deep Q-network. Runs entirely in your browser.</p>
             </div>
           </div>
           <div className="play-rules-mode">
             <span className="play-rules-mode-badge" style={{ background: "#7c3aed" }}>AZ</span>
             <div>
-              <strong>AlphaZero</strong>
+              <strong>Local Alphazero</strong>
               <p>ResNet + MCTS policy trained by self-play. Configurable strength from 25 to 400 simulations per move.</p>
             </div>
           </div>
@@ -422,7 +422,7 @@ function Lobby({
               <Swords className="h-3.5 w-3.5" />
             </span>
             <div>
-              <strong>vs Human</strong>
+              <strong>Remote Player</strong>
               <p>Join the matchmaking queue or directly challenge a waiting player by slot.</p>
             </div>
           </div>

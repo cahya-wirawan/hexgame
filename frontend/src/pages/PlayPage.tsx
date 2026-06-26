@@ -72,7 +72,7 @@ function Lobby({
   onJoin: (username: string, boardSize: number, seriesLength: number, firstPlayer: number) => void;
   onJoinSlot: (username: string, slotId: number) => void;
   onPlayVsDqn: (username: string, boardSize: number, mode: BotMode, seriesLength: number, firstPlayer: number) => void;
-  onPlayVsAZ: (username: string, boardSize: number, seriesLength: number, firstPlayer: number) => void;
+  onPlayVsAZ: (username: string, boardSize: number, seriesLength: number, firstPlayer: number, nSims: number) => void;
   dqnLoading: boolean;
   azLoading: boolean;
 }) {
@@ -87,6 +87,7 @@ function Lobby({
   const [azBoardSize, setAzBoardSize] = useState<number>(7);
   const [azSeriesLength, setAzSeriesLength] = useState<number>(1);
   const [azFirstPlayer, setAzFirstPlayer] = useState<FirstPlayerChoice>(-1);
+  const [azNSims, setAzNSims] = useState<number>(100);
   const [waitingSlots, setWaitingSlots] = useState<WaitingSlot[]>([]);
 
   useEffect(() => {
@@ -286,10 +287,21 @@ function Lobby({
                 ))}
               </div>
             </fieldset>
+            <fieldset className="play-fieldset">
+              <legend className="play-label">Strength (sims/move)</legend>
+              <div className="play-chips play-chips-compact">
+                {([25, 50, 100, 200, 400] as const).map((n) => (
+                  <label key={n} className={`play-chip ${azNSims === n ? "play-chip-active" : ""}`}>
+                    <input type="radio" name="az_n_sims" value={n} checked={azNSims === n} onChange={() => setAzNSims(n)} />
+                    {n}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
           <Button
             className="play-az-btn"
-            onClick={() => onPlayVsAZ(username.trim() || "anonymous", azBoardSize, azSeriesLength, resolveFirstPlayer(azFirstPlayer))}
+            onClick={() => onPlayVsAZ(username.trim() || "anonymous", azBoardSize, azSeriesLength, resolveFirstPlayer(azFirstPlayer), azNSims)}
             disabled={azLoading}
           >
             {azLoading ? (
@@ -417,11 +429,11 @@ export function PlayPage() {
     }
   };
 
-  const handlePlayVsAZ = async (username: string, boardSize: number, seriesLength: number, firstPlayer: number) => {
+  const handlePlayVsAZ = async (username: string, boardSize: number, seriesLength: number, firstPlayer: number, nSims: number) => {
     setIsBotGame(true);
     pendingBotJoin.current = { username };
     try {
-      await startAZ(boardSize, seriesLength, firstPlayer);
+      await startAZ(boardSize, seriesLength, firstPlayer, nSims);
     } catch {
       setIsBotGame(false);
       pendingBotJoin.current = null;
@@ -473,7 +485,7 @@ export function PlayPage() {
           onJoin={join}
           onJoinSlot={joinSlot}
           onPlayVsDqn={(u, s, m, sl, fp) => void handlePlayVsDqn(u, s, m, sl, fp)}
-          onPlayVsAZ={(u, s, sl, fp) => void handlePlayVsAZ(u, s, sl, fp)}
+          onPlayVsAZ={(u, s, sl, fp, ns) => void handlePlayVsAZ(u, s, sl, fp, ns)}
           dqnLoading={botPhase === "loading" || botPhase === "connecting"}
           azLoading={azPhase === "loading" || azPhase === "connecting"}
         />

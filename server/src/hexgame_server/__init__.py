@@ -1,3 +1,3 @@
 """Hex game server: FastAPI WebSocket arena with matchmaking."""
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"

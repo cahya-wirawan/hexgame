@@ -14,6 +14,10 @@ type PendingGame = {
   winsRequired: number;
   playerModels: Record<string, string>;
   playerUsernames: Record<string, string>;
+  // Moves that arrive from the bot before the delay expires are applied here
+  // so the board is up-to-date when we transition to the new game.
+  board: number[][] | null;
+  nextTurn: number | null;
 };
 
 export type GameState = {
@@ -59,12 +63,15 @@ const INITIAL: GameState = {
 };
 
 function applyPendingGame(s: GameState, pg: PendingGame): GameState {
+  const n = pg.boardSize;
+  // Use the board accumulated during the delay (may already have the bot's first move).
+  const board = pg.board ?? Array.from({ length: n }, () => Array<number>(n).fill(0));
   return {
     ...s,
     phase: "playing",
-    board: Array.from({ length: pg.boardSize }, () => Array<number>(pg.boardSize).fill(0)),
-    boardSize: pg.boardSize,
-    currentTurn: pg.firstTurn,
+    board,
+    boardSize: n,
+    currentTurn: pg.nextTurn ?? pg.firstTurn,
     winner: null,
     player1Wins: pg.player1Wins,
     player2Wins: pg.player2Wins,
@@ -123,6 +130,8 @@ function attachHandlers(ws: WebSocket, wsRef: React.MutableRefObject<WebSocket |
           winsRequired: p.wins_required as number,
           playerModels: ((p.player_models ?? {}) as Record<string, string>),
           playerUsernames: ((p.player_usernames ?? {}) as Record<string, string>),
+          board: null,
+          nextTurn: null,
         };
         setState((s) =>
           s.phase === "game_over" && s.seriesLength > 1
@@ -134,6 +143,24 @@ function attachHandlers(ws: WebSocket, wsRef: React.MutableRefObject<WebSocket |
 
       case "move":
         setState((s) => {
+          if (s.pendingNextGame) {
+            // A move arrived while we're still showing the previous game's board
+            // (inter-game delay). Apply it to the pending board so it's visible
+            // as soon as the delay expires.
+            const n = s.pendingNextGame.boardSize;
+            const base = s.pendingNextGame.board
+              ? s.pendingNextGame.board.map((row) => [...row])
+              : Array.from({ length: n }, () => Array<number>(n).fill(0));
+            base[p.r as number][p.q as number] = p.player as number;
+            return {
+              ...s,
+              pendingNextGame: {
+                ...s.pendingNextGame,
+                board: base,
+                nextTurn: p.next_turn as number | null,
+              },
+            };
+          }
           if (!s.board) return s;
           const board = s.board.map((row) => [...row]);
           board[p.r as number][p.q as number] = p.player as number;

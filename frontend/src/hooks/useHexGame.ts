@@ -209,6 +209,16 @@ export function useHexGame() {
     [close]
   );
 
+  const joinSlot = useCallback(
+    (username: string, slotId: number) => {
+      close();
+      setState({ ...INITIAL, phase: "waiting" });
+      const url = `${wsBase()}/ws/join-slot?slot_id=${slotId}&model_name=human&username=${encodeURIComponent(username)}`;
+      attachHandlers(new WebSocket(url), wsRef, setState);
+    },
+    [close]
+  );
+
   const reconnect = useCallback(
     (slotId: number, token: string) => {
       close();
@@ -232,5 +242,5 @@ export function useHexGame() {
 
   useEffect(() => () => close(), [close]);
 
-  return { state, join, sendMove, reconnect, reset };
+  return { state, join, joinSlot, sendMove, reconnect, reset };
 }

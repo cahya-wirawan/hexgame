@@ -1,9 +1,17 @@
-import { Gamepad2, Loader2, RefreshCw, Trophy } from "lucide-react";
+import { Gamepad2, Loader2, RefreshCw, Swords, Trophy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../components/ui/button";
 import { HexBoard } from "../components/HexBoard";
 import { useHexGame } from "../hooks/useHexGame";
+
+type WaitingSlot = {
+  slot_id: number;
+  board_size: number;
+  series_length: number | null;
+  player_models: Record<string, string>;
+  player_usernames: Record<string, string>;
+};
 
 const BOARD_SIZES = [7, 9, 11, 13, 19] as const;
 const SERIES_LENGTHS = [1, 3, 5, 7] as const;
@@ -25,10 +33,65 @@ function swatchOf(player: number) {
   return player === -1 ? "bg-red-500" : "bg-blue-500";
 }
 
-function Lobby({ onJoin }: { onJoin: (username: string, boardSize: number, seriesLength: number) => void }) {
+function slotOpponentLabel(slot: WaitingSlot): string {
+  const u = slot.player_usernames["-1"];
+  const m = slot.player_models["-1"];
+  if (u && m && m !== "human") return `${m} @${u}`;
+  if (u) return u;
+  if (m) return m;
+  return "Anonymous";
+}
+
+function Lobby({
+  onJoin,
+  onJoinSlot,
+}: {
+  onJoin: (username: string, boardSize: number, seriesLength: number) => void;
+  onJoinSlot: (username: string, slotId: number) => void;
+}) {
   const [username, setUsername] = useState("");
   const [boardSize, setBoardSize] = useState<number>(7);
   const [seriesLength, setSeriesLength] = useState<number>(1);
+  const [waitingSlots, setWaitingSlots] = useState<WaitingSlot[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchSlots() {
+      try {
+        const res = await fetch("/slots");
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as Array<{
+          slot_id: number;
+          state: string;
+          board_size: number | null;
+          series_length: number | null;
+          player_models: Record<string, string>;
+          player_usernames: Record<string, string>;
+        }>;
+        if (!cancelled) {
+          setWaitingSlots(
+            data
+              .filter((s) => s.state === "waiting" && s.board_size != null)
+              .map((s) => ({
+                slot_id: s.slot_id,
+                board_size: s.board_size as number,
+                series_length: s.series_length,
+                player_models: s.player_models,
+                player_usernames: s.player_usernames,
+              }))
+          );
+        }
+      } catch {
+        // ignore fetch errors — server may not be up yet
+      }
+    }
+    void fetchSlots();
+    const id = setInterval(() => void fetchSlots(), 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   return (
     <div className="play-lobby">
@@ -37,20 +100,54 @@ function Lobby({ onJoin }: { onJoin: (username: string, boardSize: number, serie
           <Gamepad2 className="h-5 w-5" />
         </span>
         <h2>Play Hex in your browser</h2>
-        <p>Join matchmaking and wait for an opponent — another browser tab, CLI bot, or anyone connected to this server.</p>
+        <p>Challenge a waiting player or join matchmaking to be paired automatically.</p>
+
+        <label className="play-label">
+          Your name
+          <input
+            className="play-input"
+            type="text"
+            placeholder="anonymous"
+            value={username}
+            maxLength={40}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+        </label>
+
+        {waitingSlots.length > 0 && (
+          <div className="play-slot-picker">
+            <p className="play-slot-picker-label">
+              <Swords className="h-3.5 w-3.5" />
+              Challenge a waiting player
+            </p>
+            <ul className="play-slot-list">
+              {waitingSlots.map((slot) => (
+                <li key={slot.slot_id} className="play-slot-row">
+                  <div className="play-slot-info">
+                    <span className="play-slot-opponent">{slotOpponentLabel(slot)}</span>
+                    <span className="play-slot-meta">
+                      {slot.board_size}×{slot.board_size}
+                      {slot.series_length && slot.series_length > 1 ? ` · Bo${slot.series_length}` : ""}
+                      {" · slot "}{slot.slot_id}
+                    </span>
+                  </div>
+                  <Button
+                    className="play-slot-btn"
+                    onClick={() => onJoinSlot(username.trim() || "anonymous", slot.slot_id)}
+                  >
+                    <Swords className="h-3.5 w-3.5" />
+                    Challenge
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="play-form">
-          <label className="play-label">
-            Your name
-            <input
-              className="play-input"
-              type="text"
-              placeholder="anonymous"
-              value={username}
-              maxLength={40}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-          </label>
+          <p className="play-form-divider-label">
+            {waitingSlots.length > 0 ? "Or join matchmaking" : "Join matchmaking"}
+          </p>
 
           <fieldset className="play-fieldset">
             <legend className="play-label">Board size</legend>
@@ -100,7 +197,7 @@ function Lobby({ onJoin }: { onJoin: (username: string, boardSize: number, serie
 }
 
 export function PlayPage() {
-  const { state, join, sendMove, reconnect, reset } = useHexGame();
+  const { state, join, joinSlot, sendMove, reconnect, reset } = useHexGame();
   const [isReconnecting, setIsReconnecting] = useState(false);
   const didAutoReconnect = useRef(false);
 
@@ -154,7 +251,7 @@ export function PlayPage() {
     return (
       <main className="play-shell">
         <PlayNav onReset={reset} />
-        <Lobby onJoin={join} />
+        <Lobby onJoin={join} onJoinSlot={joinSlot} />
       </main>
     );
   }

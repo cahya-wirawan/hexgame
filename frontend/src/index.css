@@ -1143,6 +1143,39 @@ html {
   margin-top: 1px;
 }
 
+.play-az-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(120, 60, 200, 0.2);
+  border-radius: 8px;
+  background: rgba(245, 240, 255, 0.5);
+  padding: 14px;
+}
+
+.play-az-desc {
+  margin: 0;
+  color: #4a307a;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.play-az-btn {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  background: #7c3aed;
+  border-color: #7c3aed;
+  align-self: flex-start;
+}
+
+.play-az-btn:hover:not(:disabled) {
+  background: #6d28d9;
+  border-color: #6d28d9;
+}
+
 .play-rules {
   border: 1px solid rgba(52, 107, 76, 0.15);
   border-radius: 10px;

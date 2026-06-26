@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { HexBoard } from "../components/HexBoard";
 import { useHexGame } from "../hooks/useHexGame";
 import { useDqnBot, type BotMode } from "../hooks/useDqnBot";
+import { useAlphaZeroBot } from "../hooks/useAlphaZeroBot";
 
 type WaitingSlot = {
   slot_id: number;
@@ -44,6 +45,7 @@ function slotOpponentLabel(slot: WaitingSlot): string {
 }
 
 const DQN_SIZES = [5, 7, 9, 11, 13] as const;
+const AZ_SIZES  = [5, 7, 9, 11] as const;
 
 const BOT_MODES: { mode: BotMode; label: string; detail: string }[] = [
   { mode: "dqn",     label: "DQN",      detail: "greedy best move" },
@@ -63,12 +65,16 @@ function Lobby({
   onJoin,
   onJoinSlot,
   onPlayVsDqn,
+  onPlayVsAZ,
   dqnLoading,
+  azLoading,
 }: {
   onJoin: (username: string, boardSize: number, seriesLength: number, firstPlayer: number) => void;
   onJoinSlot: (username: string, slotId: number) => void;
   onPlayVsDqn: (username: string, boardSize: number, mode: BotMode, seriesLength: number, firstPlayer: number) => void;
+  onPlayVsAZ: (username: string, boardSize: number, seriesLength: number, firstPlayer: number) => void;
   dqnLoading: boolean;
+  azLoading: boolean;
 }) {
   const [username, setUsername] = useState("");
   const [boardSize, setBoardSize] = useState<number>(7);
@@ -78,6 +84,9 @@ function Lobby({
   const [dqnSeriesLength, setDqnSeriesLength] = useState<number>(1);
   const [botMode, setBotMode] = useState<BotMode>("dqn");
   const [dqnFirstPlayer, setDqnFirstPlayer] = useState<FirstPlayerChoice>(-1);
+  const [azBoardSize, setAzBoardSize] = useState<number>(7);
+  const [azSeriesLength, setAzSeriesLength] = useState<number>(1);
+  const [azFirstPlayer, setAzFirstPlayer] = useState<FirstPlayerChoice>(-1);
   const [waitingSlots, setWaitingSlots] = useState<WaitingSlot[]>([]);
 
   useEffect(() => {
@@ -235,6 +244,62 @@ function Lobby({
           </Button>
         </div>
 
+        <div className="play-az-section">
+          <p className="play-slot-picker-label">
+            <Bot className="h-3.5 w-3.5" />
+            Play vs AlphaZero Bot (local AI)
+          </p>
+          <p className="play-az-desc">
+            ResNet + MCTS, trained by self-play. Runs fully in your browser (~6 MB model, 100 simulations per move).
+          </p>
+          <div className="play-dqn-config">
+            <fieldset className="play-fieldset">
+              <legend className="play-label">Board size</legend>
+              <div className="play-chips play-chips-compact">
+                {AZ_SIZES.map((s) => (
+                  <label key={s} className={`play-chip ${azBoardSize === s ? "play-chip-active" : ""}`}>
+                    <input type="radio" name="az_board_size" value={s} checked={azBoardSize === s} onChange={() => setAzBoardSize(s)} />
+                    {s}×{s}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="play-fieldset">
+              <legend className="play-label">Series</legend>
+              <div className="play-chips play-chips-compact">
+                {SERIES_LENGTHS.map((l) => (
+                  <label key={l} className={`play-chip ${azSeriesLength === l ? "play-chip-active" : ""}`}>
+                    <input type="radio" name="az_series_length" value={l} checked={azSeriesLength === l} onChange={() => setAzSeriesLength(l)} />
+                    Bo{l}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="play-fieldset">
+              <legend className="play-label">Starts first</legend>
+              <div className="play-chips play-chips-compact">
+                {([[-1, "Bot (red)"], [1, "Me (blue)"], [0, "Random"]] as [FirstPlayerChoice, string][]).map(([v, label]) => (
+                  <label key={v} className={`play-chip ${azFirstPlayer === v ? "play-chip-active" : ""}`}>
+                    <input type="radio" name="az_first_player" value={v} checked={azFirstPlayer === v} onChange={() => setAzFirstPlayer(v)} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          </div>
+          <Button
+            className="play-az-btn"
+            onClick={() => onPlayVsAZ(username.trim() || "anonymous", azBoardSize, azSeriesLength, resolveFirstPlayer(azFirstPlayer))}
+            disabled={azLoading}
+          >
+            {azLoading ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
+            ) : (
+              <><Bot className="h-3.5 w-3.5" />Play vs AlphaZero</>
+            )}
+          </Button>
+        </div>
+
         <div className="play-form">
           <p className="play-form-divider-label">
             {waitingSlots.length > 0 ? "Or join matchmaking" : "Join matchmaking"}
@@ -302,9 +367,10 @@ function Lobby({
 export function PlayPage() {
   const { state, join, joinSlot, sendMove, reconnect, reset } = useHexGame();
   const { phase: botPhase, slotId: botSlotId, start: startBot, stop: stopBot } = useDqnBot();
+  const { phase: azPhase, slotId: azSlotId, start: startAZ, stop: stopAZ } = useAlphaZeroBot();
   const [isReconnecting, setIsReconnecting] = useState(false);
-  const [isDqnGame, setIsDqnGame] = useState(false);
-  const pendingDqnJoin = useRef<{ username: string } | null>(null);
+  const [isBotGame, setIsBotGame] = useState(false);
+  const pendingBotJoin = useRef<{ username: string } | null>(null);
   const didAutoReconnect = useRef(false);
 
   useEffect(() => {
@@ -326,28 +392,48 @@ export function PlayPage() {
 
   // Once the DQN bot has a slot, have the human join it
   useEffect(() => {
-    if (!isDqnGame || !botSlotId || !pendingDqnJoin.current) return;
-    const { username } = pendingDqnJoin.current;
-    pendingDqnJoin.current = null;
+    if (!isBotGame || !botSlotId || !pendingBotJoin.current) return;
+    const { username } = pendingBotJoin.current;
+    pendingBotJoin.current = null;
     joinSlot(username, botSlotId);
-  }, [isDqnGame, botSlotId, joinSlot]);
+  }, [isBotGame, botSlotId, joinSlot]);
+
+  // Once the AlphaZero bot has a slot, have the human join it
+  useEffect(() => {
+    if (!isBotGame || !azSlotId || !pendingBotJoin.current) return;
+    const { username } = pendingBotJoin.current;
+    pendingBotJoin.current = null;
+    joinSlot(username, azSlotId);
+  }, [isBotGame, azSlotId, joinSlot]);
 
   const handlePlayVsDqn = async (username: string, boardSize: number, mode: BotMode, seriesLength: number, firstPlayer: number) => {
-    setIsDqnGame(true);
-    pendingDqnJoin.current = { username };
+    setIsBotGame(true);
+    pendingBotJoin.current = { username };
     try {
       await startBot(boardSize, mode, seriesLength, firstPlayer);
     } catch {
-      setIsDqnGame(false);
-      pendingDqnJoin.current = null;
+      setIsBotGame(false);
+      pendingBotJoin.current = null;
+    }
+  };
+
+  const handlePlayVsAZ = async (username: string, boardSize: number, seriesLength: number, firstPlayer: number) => {
+    setIsBotGame(true);
+    pendingBotJoin.current = { username };
+    try {
+      await startAZ(boardSize, seriesLength, firstPlayer);
+    } catch {
+      setIsBotGame(false);
+      pendingBotJoin.current = null;
     }
   };
 
   const handleReset = () => {
     reset();
     stopBot();
-    setIsDqnGame(false);
-    pendingDqnJoin.current = null;
+    stopAZ();
+    setIsBotGame(false);
+    pendingBotJoin.current = null;
   };
 
   const { phase, board, boardSize, myPlayer, currentTurn, winner, seriesWinner,
@@ -387,7 +473,9 @@ export function PlayPage() {
           onJoin={join}
           onJoinSlot={joinSlot}
           onPlayVsDqn={(u, s, m, sl, fp) => void handlePlayVsDqn(u, s, m, sl, fp)}
+          onPlayVsAZ={(u, s, sl, fp) => void handlePlayVsAZ(u, s, sl, fp)}
           dqnLoading={botPhase === "loading" || botPhase === "connecting"}
+          azLoading={azPhase === "loading" || azPhase === "connecting"}
         />
       </main>
     );

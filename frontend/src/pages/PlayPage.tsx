@@ -88,6 +88,7 @@ function Lobby({
   const [azSeriesLength, setAzSeriesLength] = useState<number>(1);
   const [azFirstPlayer, setAzFirstPlayer] = useState<FirstPlayerChoice>(-1);
   const [azNSims, setAzNSims] = useState<number>(100);
+  const [selectedMode, setSelectedMode] = useState<"dqn" | "az" | "human">("dqn");
   const [waitingSlots, setWaitingSlots] = useState<WaitingSlot[]>([]);
 
   const slotsWsRef = useRef<WebSocket | null>(null);
@@ -141,7 +142,6 @@ function Lobby({
           <Gamepad2 className="h-5 w-5" />
         </span>
         <h2>Play Hex in your browser</h2>
-        <p>Challenge a waiting player or join matchmaking to be paired automatically.</p>
 
         <label className="play-label">
           Your name
@@ -155,217 +155,239 @@ function Lobby({
           />
         </label>
 
-        {waitingSlots.length > 0 && (
-          <div className="play-slot-picker">
-            <p className="play-slot-picker-label">
-              <Swords className="h-3.5 w-3.5" />
-              Challenge a waiting player
+        <div className="play-mode-tabs">
+          <button
+            className={`play-mode-tab${selectedMode === "dqn" ? " play-mode-tab-active play-mode-tab-dqn" : ""}`}
+            onClick={() => setSelectedMode("dqn")}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            DQN Bot
+          </button>
+          <button
+            className={`play-mode-tab${selectedMode === "az" ? " play-mode-tab-active play-mode-tab-az" : ""}`}
+            onClick={() => setSelectedMode("az")}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            AlphaZero
+          </button>
+          <button
+            className={`play-mode-tab${selectedMode === "human" ? " play-mode-tab-active play-mode-tab-human" : ""}`}
+            onClick={() => setSelectedMode("human")}
+          >
+            <Swords className="h-3.5 w-3.5" />
+            vs Human
+            {waitingSlots.length > 0 && (
+              <span className="play-mode-badge">{waitingSlots.length}</span>
+            )}
+          </button>
+        </div>
+
+        {selectedMode === "dqn" && (
+          <div className="play-mode-content">
+            <p className="play-dqn-desc">
+              Runs the model in your browser — no server needed. First move may pause briefly while the model loads (~2–7 MB).
             </p>
-            <ul className="play-slot-list">
-              {waitingSlots.map((slot) => (
-                <li key={slot.slot_id} className="play-slot-row">
-                  <div className="play-slot-info">
-                    <span className="play-slot-opponent">{slotOpponentLabel(slot)}</span>
-                    <span className="play-slot-meta">
-                      {slot.board_size}×{slot.board_size}
-                      {slot.series_length && slot.series_length > 1 ? ` · Bo${slot.series_length}` : ""}
-                      {" · slot "}{slot.slot_id}
-                    </span>
-                  </div>
-                  <Button
-                    className="play-slot-btn"
-                    onClick={() => onJoinSlot(username.trim() || "anonymous", slot.slot_id)}
-                  >
-                    <Swords className="h-3.5 w-3.5" />
-                    Challenge
-                  </Button>
-                </li>
+            <div className="play-dqn-mode-row">
+              {BOT_MODES.map(({ mode, label, detail }) => (
+                <label key={mode} className={`play-dqn-mode-chip ${botMode === mode ? "play-dqn-mode-chip-active" : ""}`}>
+                  <input type="radio" name="bot_mode" value={mode} checked={botMode === mode} onChange={() => setBotMode(mode)} />
+                  <span className="play-dqn-mode-label">{label}</span>
+                  <span className="play-dqn-mode-detail">{detail}</span>
+                </label>
               ))}
-            </ul>
+            </div>
+            <div className="play-dqn-config">
+              <fieldset className="play-fieldset">
+                <legend className="play-label">Board size</legend>
+                <div className="play-chips play-chips-compact">
+                  {DQN_SIZES.map((s) => (
+                    <label key={s} className={`play-chip ${dqnBoardSize === s ? "play-chip-active" : ""}`}>
+                      <input type="radio" name="dqn_board_size" value={s} checked={dqnBoardSize === s} onChange={() => setDqnBoardSize(s)} />
+                      {s}×{s}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="play-fieldset">
+                <legend className="play-label">Series</legend>
+                <div className="play-chips play-chips-compact">
+                  {SERIES_LENGTHS.map((l) => (
+                    <label key={l} className={`play-chip ${dqnSeriesLength === l ? "play-chip-active" : ""}`}>
+                      <input type="radio" name="dqn_series_length" value={l} checked={dqnSeriesLength === l} onChange={() => setDqnSeriesLength(l)} />
+                      Bo{l}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="play-fieldset">
+                <legend className="play-label">Starts first</legend>
+                <div className="play-chips play-chips-compact">
+                  {([[-1, "Bot (red)"], [1, "Me (blue)"], [0, "Random"]] as [FirstPlayerChoice, string][]).map(([v, label]) => (
+                    <label key={v} className={`play-chip ${dqnFirstPlayer === v ? "play-chip-active" : ""}`}>
+                      <input type="radio" name="dqn_first_player" value={v} checked={dqnFirstPlayer === v} onChange={() => setDqnFirstPlayer(v)} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+            <Button
+              className="play-mode-btn play-dqn-btn"
+              onClick={() => onPlayVsDqn(username.trim() || "anonymous", dqnBoardSize, botMode, dqnSeriesLength, resolveFirstPlayer(dqnFirstPlayer))}
+              disabled={dqnLoading}
+            >
+              {dqnLoading ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
+              ) : (
+                <><Bot className="h-3.5 w-3.5" />Play vs {BOT_MODES.find(m => m.mode === botMode)?.label ?? "DQN"}</>
+              )}
+            </Button>
           </div>
         )}
 
-        <div className="play-dqn-section">
-          <p className="play-slot-picker-label">
-            <Bot className="h-3.5 w-3.5" />
-            Play vs DQN Bot (local AI)
-          </p>
-          <p className="play-dqn-desc">
-            Runs the model in your browser — no server bot needed. First move may pause briefly while the model loads (~2–7 MB).
-          </p>
-          <div className="play-dqn-mode-row">
-            {BOT_MODES.map(({ mode, label, detail }) => (
-              <label key={mode} className={`play-dqn-mode-chip ${botMode === mode ? "play-dqn-mode-chip-active" : ""}`}>
-                <input type="radio" name="bot_mode" value={mode} checked={botMode === mode} onChange={() => setBotMode(mode)} />
-                <span className="play-dqn-mode-label">{label}</span>
-                <span className="play-dqn-mode-detail">{detail}</span>
-              </label>
-            ))}
+        {selectedMode === "az" && (
+          <div className="play-mode-content">
+            <p className="play-az-desc">
+              ResNet + MCTS, trained by self-play. Runs fully in your browser (~6 MB model, 100 simulations per move).
+            </p>
+            <div className="play-dqn-config">
+              <fieldset className="play-fieldset">
+                <legend className="play-label">Board size</legend>
+                <div className="play-chips play-chips-compact">
+                  {AZ_SIZES.map((s) => (
+                    <label key={s} className={`play-chip ${azBoardSize === s ? "play-chip-active" : ""}`}>
+                      <input type="radio" name="az_board_size" value={s} checked={azBoardSize === s} onChange={() => setAzBoardSize(s)} />
+                      {s}×{s}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="play-fieldset">
+                <legend className="play-label">Series</legend>
+                <div className="play-chips play-chips-compact">
+                  {SERIES_LENGTHS.map((l) => (
+                    <label key={l} className={`play-chip ${azSeriesLength === l ? "play-chip-active" : ""}`}>
+                      <input type="radio" name="az_series_length" value={l} checked={azSeriesLength === l} onChange={() => setAzSeriesLength(l)} />
+                      Bo{l}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="play-fieldset">
+                <legend className="play-label">Starts first</legend>
+                <div className="play-chips play-chips-compact">
+                  {([[-1, "Bot (red)"], [1, "Me (blue)"], [0, "Random"]] as [FirstPlayerChoice, string][]).map(([v, label]) => (
+                    <label key={v} className={`play-chip ${azFirstPlayer === v ? "play-chip-active" : ""}`}>
+                      <input type="radio" name="az_first_player" value={v} checked={azFirstPlayer === v} onChange={() => setAzFirstPlayer(v)} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="play-fieldset">
+                <legend className="play-label">Strength (sims/move)</legend>
+                <div className="play-chips play-chips-compact">
+                  {([25, 50, 100, 200, 400] as const).map((n) => (
+                    <label key={n} className={`play-chip ${azNSims === n ? "play-chip-active" : ""}`}>
+                      <input type="radio" name="az_n_sims" value={n} checked={azNSims === n} onChange={() => setAzNSims(n)} />
+                      {n}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+            <Button
+              className="play-mode-btn play-az-btn"
+              onClick={() => onPlayVsAZ(username.trim() || "anonymous", azBoardSize, azSeriesLength, resolveFirstPlayer(azFirstPlayer), azNSims)}
+              disabled={azLoading}
+            >
+              {azLoading ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
+              ) : (
+                <><Bot className="h-3.5 w-3.5" />Play vs AlphaZero</>
+              )}
+            </Button>
           </div>
-          <div className="play-dqn-config">
-            <fieldset className="play-fieldset">
-              <legend className="play-label">Board size</legend>
-              <div className="play-chips play-chips-compact">
-                {DQN_SIZES.map((s) => (
-                  <label key={s} className={`play-chip ${dqnBoardSize === s ? "play-chip-active" : ""}`}>
-                    <input type="radio" name="dqn_board_size" value={s} checked={dqnBoardSize === s} onChange={() => setDqnBoardSize(s)} />
-                    {s}×{s}
-                  </label>
-                ))}
+        )}
+
+        {selectedMode === "human" && (
+          <div className="play-mode-content">
+            {waitingSlots.length > 0 && (
+              <div className="play-slot-picker">
+                <p className="play-slot-picker-label">
+                  <Swords className="h-3.5 w-3.5" />
+                  Challenge a waiting player
+                </p>
+                <ul className="play-slot-list">
+                  {waitingSlots.map((slot) => (
+                    <li key={slot.slot_id} className="play-slot-row">
+                      <div className="play-slot-info">
+                        <span className="play-slot-opponent">{slotOpponentLabel(slot)}</span>
+                        <span className="play-slot-meta">
+                          {slot.board_size}×{slot.board_size}
+                          {slot.series_length && slot.series_length > 1 ? ` · Bo${slot.series_length}` : ""}
+                          {" · slot "}{slot.slot_id}
+                        </span>
+                      </div>
+                      <Button
+                        className="play-slot-btn"
+                        onClick={() => onJoinSlot(username.trim() || "anonymous", slot.slot_id)}
+                      >
+                        <Swords className="h-3.5 w-3.5" />
+                        Challenge
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </fieldset>
-            <fieldset className="play-fieldset">
-              <legend className="play-label">Series</legend>
-              <div className="play-chips play-chips-compact">
-                {SERIES_LENGTHS.map((l) => (
-                  <label key={l} className={`play-chip ${dqnSeriesLength === l ? "play-chip-active" : ""}`}>
-                    <input type="radio" name="dqn_series_length" value={l} checked={dqnSeriesLength === l} onChange={() => setDqnSeriesLength(l)} />
-                    Bo{l}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="play-fieldset">
-              <legend className="play-label">Starts first</legend>
-              <div className="play-chips play-chips-compact">
-                {([[-1, "Bot (red)"], [1, "Me (blue)"], [0, "Random"]] as [FirstPlayerChoice, string][]).map(([v, label]) => (
-                  <label key={v} className={`play-chip ${dqnFirstPlayer === v ? "play-chip-active" : ""}`}>
-                    <input type="radio" name="dqn_first_player" value={v} checked={dqnFirstPlayer === v} onChange={() => setDqnFirstPlayer(v)} />
-                    {label}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          </div>
-          <Button
-            className="play-dqn-btn"
-            onClick={() => onPlayVsDqn(username.trim() || "anonymous", dqnBoardSize, botMode, dqnSeriesLength, resolveFirstPlayer(dqnFirstPlayer))}
-            disabled={dqnLoading}
-          >
-            {dqnLoading ? (
-              <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
-            ) : (
-              <><Bot className="h-3.5 w-3.5" />Play vs {BOT_MODES.find(m => m.mode === botMode)?.label ?? "DQN"}</>
             )}
-          </Button>
-        </div>
-
-        <div className="play-az-section">
-          <p className="play-slot-picker-label">
-            <Bot className="h-3.5 w-3.5" />
-            Play vs AlphaZero Bot (local AI)
-          </p>
-          <p className="play-az-desc">
-            ResNet + MCTS, trained by self-play. Runs fully in your browser (~6 MB model, 100 simulations per move).
-          </p>
-          <div className="play-dqn-config">
-            <fieldset className="play-fieldset">
-              <legend className="play-label">Board size</legend>
-              <div className="play-chips play-chips-compact">
-                {AZ_SIZES.map((s) => (
-                  <label key={s} className={`play-chip ${azBoardSize === s ? "play-chip-active" : ""}`}>
-                    <input type="radio" name="az_board_size" value={s} checked={azBoardSize === s} onChange={() => setAzBoardSize(s)} />
-                    {s}×{s}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="play-fieldset">
-              <legend className="play-label">Series</legend>
-              <div className="play-chips play-chips-compact">
-                {SERIES_LENGTHS.map((l) => (
-                  <label key={l} className={`play-chip ${azSeriesLength === l ? "play-chip-active" : ""}`}>
-                    <input type="radio" name="az_series_length" value={l} checked={azSeriesLength === l} onChange={() => setAzSeriesLength(l)} />
-                    Bo{l}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="play-fieldset">
-              <legend className="play-label">Starts first</legend>
-              <div className="play-chips play-chips-compact">
-                {([[-1, "Bot (red)"], [1, "Me (blue)"], [0, "Random"]] as [FirstPlayerChoice, string][]).map(([v, label]) => (
-                  <label key={v} className={`play-chip ${azFirstPlayer === v ? "play-chip-active" : ""}`}>
-                    <input type="radio" name="az_first_player" value={v} checked={azFirstPlayer === v} onChange={() => setAzFirstPlayer(v)} />
-                    {label}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="play-fieldset">
-              <legend className="play-label">Strength (sims/move)</legend>
-              <div className="play-chips play-chips-compact">
-                {([25, 50, 100, 200, 400] as const).map((n) => (
-                  <label key={n} className={`play-chip ${azNSims === n ? "play-chip-active" : ""}`}>
-                    <input type="radio" name="az_n_sims" value={n} checked={azNSims === n} onChange={() => setAzNSims(n)} />
-                    {n}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+            <div className="play-form">
+              <p className="play-form-divider-label">
+                {waitingSlots.length > 0 ? "Or join matchmaking" : "Join matchmaking"}
+              </p>
+              <fieldset className="play-fieldset">
+                <legend className="play-label">Board size</legend>
+                <div className="play-chips">
+                  {BOARD_SIZES.map((s) => (
+                    <label key={s} className={`play-chip ${boardSize === s ? "play-chip-active" : ""}`}>
+                      <input type="radio" name="board_size" value={s} checked={boardSize === s} onChange={() => setBoardSize(s)} />
+                      {s}×{s}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="play-fieldset">
+                <legend className="play-label">Series length</legend>
+                <div className="play-chips">
+                  {SERIES_LENGTHS.map((l) => (
+                    <label key={l} className={`play-chip ${seriesLength === l ? "play-chip-active" : ""}`}>
+                      <input type="radio" name="series_length" value={l} checked={seriesLength === l} onChange={() => setSeriesLength(l)} />
+                      Best of {l}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="play-fieldset">
+                <legend className="play-label">Starts game 1</legend>
+                <div className="play-chips">
+                  {([[-1, "Red (default)"], [1, "Blue"], [0, "Random"]] as [FirstPlayerChoice, string][]).map(([v, label]) => (
+                    <label key={v} className={`play-chip ${firstPlayerChoice === v ? "play-chip-active" : ""}`}>
+                      <input type="radio" name="first_player" value={v} checked={firstPlayerChoice === v} onChange={() => setFirstPlayerChoice(v)} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <Button
+                className="play-join-btn"
+                onClick={() => onJoin(username.trim() || "anonymous", boardSize, seriesLength, resolveFirstPlayer(firstPlayerChoice))}
+              >
+                <Gamepad2 className="h-4 w-4" />
+                Join matchmaking
+              </Button>
+            </div>
           </div>
-          <Button
-            className="play-az-btn"
-            onClick={() => onPlayVsAZ(username.trim() || "anonymous", azBoardSize, azSeriesLength, resolveFirstPlayer(azFirstPlayer), azNSims)}
-            disabled={azLoading}
-          >
-            {azLoading ? (
-              <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
-            ) : (
-              <><Bot className="h-3.5 w-3.5" />Play vs AlphaZero</>
-            )}
-          </Button>
-        </div>
-
-        <div className="play-form">
-          <p className="play-form-divider-label">
-            {waitingSlots.length > 0 ? "Or join matchmaking" : "Join matchmaking"}
-          </p>
-
-          <fieldset className="play-fieldset">
-            <legend className="play-label">Board size</legend>
-            <div className="play-chips">
-              {BOARD_SIZES.map((s) => (
-                <label key={s} className={`play-chip ${boardSize === s ? "play-chip-active" : ""}`}>
-                  <input type="radio" name="board_size" value={s} checked={boardSize === s} onChange={() => setBoardSize(s)} />
-                  {s}×{s}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <fieldset className="play-fieldset">
-            <legend className="play-label">Series length</legend>
-            <div className="play-chips">
-              {SERIES_LENGTHS.map((l) => (
-                <label key={l} className={`play-chip ${seriesLength === l ? "play-chip-active" : ""}`}>
-                  <input type="radio" name="series_length" value={l} checked={seriesLength === l} onChange={() => setSeriesLength(l)} />
-                  Best of {l}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <fieldset className="play-fieldset">
-            <legend className="play-label">Starts game 1</legend>
-            <div className="play-chips">
-              {([[-1, "Red (default)"], [1, "Blue"], [0, "Random"]] as [FirstPlayerChoice, string][]).map(([v, label]) => (
-                <label key={v} className={`play-chip ${firstPlayerChoice === v ? "play-chip-active" : ""}`}>
-                  <input type="radio" name="first_player" value={v} checked={firstPlayerChoice === v} onChange={() => setFirstPlayerChoice(v)} />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <Button
-            className="play-join-btn"
-            onClick={() => onJoin(username.trim() || "anonymous", boardSize, seriesLength, resolveFirstPlayer(firstPlayerChoice))}
-          >
-            <Gamepad2 className="h-4 w-4" />
-            Join matchmaking
-          </Button>
-        </div>
+        )}
       </div>
 
       <div className="play-rules">
@@ -376,13 +398,42 @@ function Lobby({
           <li>Click an empty cell on your turn to place a stone.</li>
           <li>The first player to form an unbroken chain wins the game.</li>
         </ul>
+
+        <div className="play-rules-divider" />
+
+        <h3>Game modes</h3>
+        <div className="play-rules-modes">
+          <div className="play-rules-mode">
+            <span className="play-rules-mode-badge" style={{ background: "#3a5bd9" }}>DQN</span>
+            <div>
+              <strong>DQN Bot</strong>
+              <p>Greedy, Minimax (α-β), or MCTS strategy using a deep Q-network. Runs entirely in your browser.</p>
+            </div>
+          </div>
+          <div className="play-rules-mode">
+            <span className="play-rules-mode-badge" style={{ background: "#7c3aed" }}>AZ</span>
+            <div>
+              <strong>AlphaZero</strong>
+              <p>ResNet + MCTS policy trained by self-play. Configurable strength from 25 to 400 simulations per move.</p>
+            </div>
+          </div>
+          <div className="play-rules-mode">
+            <span className="play-rules-mode-badge" style={{ background: "#17633f" }}>
+              <Swords className="h-3.5 w-3.5" />
+            </span>
+            <div>
+              <strong>vs Human</strong>
+              <p>Join the matchmaking queue or directly challenge a waiting player by slot.</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
 export function PlayPage() {
-  const { state, join, joinSlot, sendMove, reconnect, reset } = useHexGame();
+  const { state, nextGameCountdown, join, joinSlot, sendMove, reconnect, reset } = useHexGame();
   const { phase: botPhase, slotId: botSlotId, start: startBot, stop: stopBot } = useDqnBot();
   const { phase: azPhase, slotId: azSlotId, start: startAZ, stop: stopAZ } = useAlphaZeroBot();
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -468,7 +519,11 @@ export function PlayPage() {
           <Trophy className="h-4 w-4" />
           {playerLabel(w, playerModels, playerUsernames)} wins game {currentGame}!
           {seriesLength > 1 && ` — Score: ${player1Wins}-${player2Wins} (need ${winsRequired})`}
-          <span className="play-banner-sub">Waiting for next game…</span>
+          {nextGameCountdown !== null ? (
+            <span className="play-banner-sub">Next game in {nextGameCountdown} s…</span>
+          ) : (
+            <span className="play-banner-sub">Waiting for next game…</span>
+          )}
         </div>
       );
     }

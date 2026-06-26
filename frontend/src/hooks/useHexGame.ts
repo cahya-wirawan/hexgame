@@ -2,6 +2,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type GamePhase = "lobby" | "waiting" | "playing" | "game_over" | "series_over" | "error";
 
+const BETWEEN_GAME_DELAY_MS = 3000;
+
+type PendingGame = {
+  boardSize: number;
+  firstTurn: number;
+  currentGameNumber: number;
+  seriesLength: number;
+  player1Wins: number;
+  player2Wins: number;
+  winsRequired: number;
+  playerModels: Record<string, string>;
+  playerUsernames: Record<string, string>;
+};
+
 export type GameState = {
   phase: GamePhase;
   myPlayer: number | null;
@@ -20,6 +34,7 @@ export type GameState = {
   slotId: number | null;
   errorMessage: string | null;
   reconnectToken: string | null;
+  pendingNextGame: PendingGame | null;
 };
 
 const INITIAL: GameState = {
@@ -40,7 +55,28 @@ const INITIAL: GameState = {
   slotId: null,
   errorMessage: null,
   reconnectToken: null,
+  pendingNextGame: null,
 };
+
+function applyPendingGame(s: GameState, pg: PendingGame): GameState {
+  return {
+    ...s,
+    phase: "playing",
+    board: Array.from({ length: pg.boardSize }, () => Array<number>(pg.boardSize).fill(0)),
+    boardSize: pg.boardSize,
+    currentTurn: pg.firstTurn,
+    winner: null,
+    player1Wins: pg.player1Wins,
+    player2Wins: pg.player2Wins,
+    seriesLength: pg.seriesLength,
+    winsRequired: pg.winsRequired,
+    currentGame: pg.currentGameNumber,
+    playerModels: pg.playerModels,
+    playerUsernames: pg.playerUsernames,
+    pendingNextGame: null,
+    errorMessage: null,
+  };
+}
 
 function wsBase() {
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
@@ -77,23 +113,22 @@ function attachHandlers(ws: WebSocket, wsRef: React.MutableRefObject<WebSocket |
         break;
 
       case "game_start": {
-        const n = p.board_size as number;
-        setState((s) => ({
-          ...s,
-          phase: "playing",
-          board: Array.from({ length: n }, () => Array<number>(n).fill(0)),
-          boardSize: n,
-          currentTurn: p.first_turn as number,
-          winner: null,
+        const pg: PendingGame = {
+          boardSize: p.board_size as number,
+          firstTurn: p.first_turn as number,
+          currentGameNumber: p.current_game_number as number,
+          seriesLength: p.series_length as number,
           player1Wins: p.player_1_wins as number,
           player2Wins: p.player_2_wins as number,
-          seriesLength: p.series_length as number,
           winsRequired: p.wins_required as number,
-          currentGame: p.current_game_number as number,
           playerModels: ((p.player_models ?? {}) as Record<string, string>),
           playerUsernames: ((p.player_usernames ?? {}) as Record<string, string>),
-          errorMessage: null,
-        }));
+        };
+        setState((s) =>
+          s.phase === "game_over" && s.seriesLength > 1
+            ? { ...s, pendingNextGame: pg }
+            : applyPendingGame({ ...s, pendingNextGame: null }, pg)
+        );
         break;
       }
 
@@ -192,6 +227,7 @@ function attachHandlers(ws: WebSocket, wsRef: React.MutableRefObject<WebSocket |
 
 export function useHexGame() {
   const [state, setState] = useState<GameState>(INITIAL);
+  const [nextGameCountdown, setNextGameCountdown] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   const close = useCallback(() => {
@@ -241,7 +277,27 @@ export function useHexGame() {
     setState(INITIAL);
   }, [close]);
 
+  useEffect(() => {
+    const pg = state.pendingNextGame;
+    if (!pg) {
+      setNextGameCountdown(null);
+      return;
+    }
+    const seconds = Math.round(BETWEEN_GAME_DELAY_MS / 1000);
+    setNextGameCountdown(seconds);
+    const tick = setInterval(() => {
+      setNextGameCountdown((n) => (n !== null && n > 1 ? n - 1 : n));
+    }, 1000);
+    const apply = setTimeout(() => {
+      setState((s) => s.pendingNextGame ? applyPendingGame(s, s.pendingNextGame) : s);
+    }, BETWEEN_GAME_DELAY_MS);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(apply);
+    };
+  }, [state.pendingNextGame]);
+
   useEffect(() => () => close(), [close]);
 
-  return { state, join, joinSlot, sendMove, reconnect, reset };
+  return { state, nextGameCountdown, join, joinSlot, sendMove, reconnect, reset };
 }

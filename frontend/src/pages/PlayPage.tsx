@@ -90,21 +90,24 @@ function Lobby({
   const [azNSims, setAzNSims] = useState<number>(100);
   const [waitingSlots, setWaitingSlots] = useState<WaitingSlot[]>([]);
 
+  const slotsWsRef = useRef<WebSocket | null>(null);
   useEffect(() => {
-    let cancelled = false;
-    async function fetchSlots() {
-      try {
-        const res = await fetch("/slots");
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as Array<{
-          slot_id: number;
-          state: string;
-          board_size: number | null;
-          series_length: number | null;
-          player_models: Record<string, string>;
-          player_usernames: Record<string, string>;
-        }>;
-        if (!cancelled) {
+    let closed = false;
+    function connect() {
+      if (closed) return;
+      const proto = window.location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${window.location.host}/ws/slots`);
+      slotsWsRef.current = ws;
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data as string) as Array<{
+            slot_id: number;
+            state: string;
+            board_size: number | null;
+            series_length: number | null;
+            player_models: Record<string, string>;
+            player_usernames: Record<string, string>;
+          }>;
           setWaitingSlots(
             data
               .filter((s) => s.state === "waiting" && s.board_size != null)
@@ -116,16 +119,18 @@ function Lobby({
                 player_usernames: s.player_usernames,
               }))
           );
+        } catch {
+          // ignore parse errors
         }
-      } catch {
-        // ignore fetch errors — server may not be up yet
-      }
+      };
+      ws.onclose = () => {
+        if (!closed) setTimeout(connect, 2000);
+      };
     }
-    void fetchSlots();
-    const id = setInterval(() => void fetchSlots(), 3000);
+    connect();
     return () => {
-      cancelled = true;
-      clearInterval(id);
+      closed = true;
+      slotsWsRef.current?.close();
     };
   }, []);
 

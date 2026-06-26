@@ -4,7 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -105,6 +105,21 @@ def health():
 @app.get("/slots")
 async def get_slots():
     return await slot_manager.snapshot()
+
+
+@app.websocket("/ws/slots")
+async def websocket_slots(websocket: WebSocket):
+    await websocket.accept()
+    queue = slot_manager.subscribe()
+    try:
+        await websocket.send_json(await slot_manager.snapshot())
+        while True:
+            snapshot = await queue.get()
+            await websocket.send_json(snapshot)
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
+        slot_manager.unsubscribe(queue)
 
 
 @app.get("/api/statistics")

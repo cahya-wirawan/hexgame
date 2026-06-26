@@ -14,7 +14,7 @@ import {
   Trophy,
   Users
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -774,22 +774,11 @@ export default function App() {
   const isStatisticsPage = currentPath === "/statistics";
   const isPlayPage = currentPath === "/play";
 
+  const slotsWsRef = useRef<WebSocket | null>(null);
+
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    try {
-      const response = await fetch("/slots", { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`Request failed with ${response.status}`);
-      }
-      const data = (await response.json()) as SlotSnapshot[];
-      setSlots(data);
-      setUpdatedAt(new Date());
-      setError(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Failed to load slots");
-    } finally {
-      setIsLoading(false);
-    }
+    slotsWsRef.current?.close();
   }, []);
 
   const refreshStats = useCallback(async () => {
@@ -811,11 +800,46 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const load = isStatisticsPage ? refreshStats : refresh;
-    void load();
-    const id = window.setInterval(() => void load(), isStatisticsPage ? 10000 : 2000);
-    return () => window.clearInterval(id);
-  }, [isStatisticsPage, refresh, refreshStats]);
+    if (isStatisticsPage) {
+      void refreshStats();
+      const id = window.setInterval(() => void refreshStats(), 10000);
+      return () => window.clearInterval(id);
+    }
+    if (isPlayPage) return;
+
+    let closed = false;
+    function connect() {
+      if (closed) return;
+      const proto = window.location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${window.location.host}/ws/slots`);
+      slotsWsRef.current = ws;
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data as string) as SlotSnapshot[];
+          setSlots(data);
+          setUpdatedAt(new Date());
+          setError(null);
+        } catch {
+          setError("Failed to parse slot data");
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      ws.onerror = () => {
+        setError("Connection error");
+        setIsLoading(false);
+      };
+      ws.onclose = () => {
+        if (!closed) setTimeout(connect, 2000);
+      };
+    }
+    setIsLoading(true);
+    connect();
+    return () => {
+      closed = true;
+      slotsWsRef.current?.close();
+    };
+  }, [isStatisticsPage, isPlayPage, refreshStats]);
 
   const totals = useMemo(() => {
     return slots.reduce(

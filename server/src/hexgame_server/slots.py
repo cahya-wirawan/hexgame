@@ -18,6 +18,22 @@ class SlotManager:
             for slot_id in range(1, max_slots + 1)
         }
         self.lock = asyncio.Lock()
+        self._subscribers: set[asyncio.Queue] = set()
+
+    def subscribe(self) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue()
+        self._subscribers.add(q)
+        return q
+
+    def unsubscribe(self, queue: asyncio.Queue) -> None:
+        self._subscribers.discard(queue)
+
+    def _notify(self) -> None:
+        if not self._subscribers:
+            return
+        snapshot = [slot.snapshot() for slot in self.slots.values()]
+        for q in self._subscribers:
+            q.put_nowait(snapshot)
 
     async def join_slot(
         self,
@@ -46,6 +62,7 @@ class SlotManager:
                     username=username,
                 )
                 slot.state = "waiting"
+                self._notify()
                 return self._assignment(slot, PLAYER_1)
 
             if (
@@ -65,6 +82,7 @@ class SlotManager:
                 slot.state = "full"
                 first_turn = slot.series_state.first_turn() if slot.series_state else PLAYER_1
                 slot.game_state = HexGameState.create(board_size, first_turn=first_turn)
+                self._notify()
                 return self._assignment(slot, PLAYER_2)
 
             return None
@@ -98,6 +116,7 @@ class SlotManager:
             slot.state = "full"
             first_turn = slot.series_state.first_turn() if slot.series_state else PLAYER_1
             slot.game_state = HexGameState.create(slot.board_size, first_turn=first_turn)
+            self._notify()
             return self._assignment(slot, PLAYER_2), None
 
     async def get_slot(self, slot_id: int) -> GameSlot | None:
@@ -142,6 +161,7 @@ class SlotManager:
                 connection.connected = True
                 connection.disconnected_at = None
                 assignment = self._assignment(slot, connection.player_id)
+                self._notify()
                 break
             else:
                 return None, "Invalid reconnect token"
@@ -171,6 +191,7 @@ class SlotManager:
                 remaining = slot.player_1
 
             slot.reset()
+            self._notify()
             return remaining
 
     async def keep_slot_for_next_match(
@@ -214,6 +235,7 @@ class SlotManager:
             slot.series_state = MatchSeriesState.create(series_length)
             slot.board_size = board_size
             slot.series_length = series_length
+            self._notify()
             return (self._assignment(slot, PLAYER_1), opponent), None
 
     async def mark_disconnected(
@@ -239,6 +261,7 @@ class SlotManager:
             connection.connected = False
             connection.websocket = None
             connection.disconnected_at = time.monotonic()
+            self._notify()
             return slot.opponent_connection(player_id), connection.reconnect_token
 
     async def reset_if_still_disconnected(
@@ -262,6 +285,7 @@ class SlotManager:
 
             remaining = slot.opponent_connection(player_id)
             slot.reset()
+            self._notify()
             return remaining
 
     async def get_opponent(self, slot_id: int, player_id: int) -> PlayerConnection | None:

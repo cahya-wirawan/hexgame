@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import { HexBoard } from "../components/HexBoard";
 import { useHexGame } from "../hooks/useHexGame";
-import { useDqnBot } from "../hooks/useDqnBot";
+import { useDqnBot, type BotMode } from "../hooks/useDqnBot";
 
 type WaitingSlot = {
   slot_id: number;
@@ -45,6 +45,12 @@ function slotOpponentLabel(slot: WaitingSlot): string {
 
 const DQN_SIZES = [5, 7, 9, 11, 13] as const;
 
+const BOT_MODES: { mode: BotMode; label: string; detail: string }[] = [
+  { mode: "dqn",     label: "DQN",      detail: "greedy best move" },
+  { mode: "minimax", label: "Minimax",   detail: "α-β, 2-ply" },
+  { mode: "mcts",    label: "MCTS",      detail: "200 sims, PUCT" },
+];
+
 function Lobby({
   onJoin,
   onJoinSlot,
@@ -53,13 +59,14 @@ function Lobby({
 }: {
   onJoin: (username: string, boardSize: number, seriesLength: number) => void;
   onJoinSlot: (username: string, slotId: number) => void;
-  onPlayVsDqn: (username: string, boardSize: number) => void;
+  onPlayVsDqn: (username: string, boardSize: number, mode: BotMode) => void;
   dqnLoading: boolean;
 }) {
   const [username, setUsername] = useState("");
   const [boardSize, setBoardSize] = useState<number>(7);
   const [seriesLength, setSeriesLength] = useState<number>(1);
   const [dqnBoardSize, setDqnBoardSize] = useState<number>(7);
+  const [botMode, setBotMode] = useState<BotMode>("dqn");
   const [waitingSlots, setWaitingSlots] = useState<WaitingSlot[]>([]);
 
   useEffect(() => {
@@ -160,6 +167,15 @@ function Lobby({
           <p className="play-dqn-desc">
             Runs the model in your browser — no server bot needed. First move may pause briefly while the model loads (~2–7 MB).
           </p>
+          <div className="play-dqn-mode-row">
+            {BOT_MODES.map(({ mode, label, detail }) => (
+              <label key={mode} className={`play-dqn-mode-chip ${botMode === mode ? "play-dqn-mode-chip-active" : ""}`}>
+                <input type="radio" name="bot_mode" value={mode} checked={botMode === mode} onChange={() => setBotMode(mode)} />
+                <span className="play-dqn-mode-label">{label}</span>
+                <span className="play-dqn-mode-detail">{detail}</span>
+              </label>
+            ))}
+          </div>
           <div className="play-dqn-row">
             <div className="play-chips play-chips-compact">
               {DQN_SIZES.map((s) => (
@@ -171,13 +187,13 @@ function Lobby({
             </div>
             <Button
               className="play-dqn-btn"
-              onClick={() => onPlayVsDqn(username.trim() || "anonymous", dqnBoardSize)}
+              onClick={() => onPlayVsDqn(username.trim() || "anonymous", dqnBoardSize, botMode)}
               disabled={dqnLoading}
             >
               {dqnLoading ? (
                 <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
               ) : (
-                <><Bot className="h-3.5 w-3.5" />Play vs DQN</>
+                <><Bot className="h-3.5 w-3.5" />Play vs {BOT_MODES.find(m => m.mode === botMode)?.label ?? "DQN"}</>
               )}
             </Button>
           </div>
@@ -268,11 +284,11 @@ export function PlayPage() {
     joinSlot(username, botSlotId);
   }, [isDqnGame, botSlotId, joinSlot]);
 
-  const handlePlayVsDqn = async (username: string, boardSize: number) => {
+  const handlePlayVsDqn = async (username: string, boardSize: number, mode: BotMode) => {
     setIsDqnGame(true);
     pendingDqnJoin.current = { username };
     try {
-      await startBot(boardSize);
+      await startBot(boardSize, mode);
     } catch {
       setIsDqnGame(false);
       pendingDqnJoin.current = null;
@@ -322,7 +338,7 @@ export function PlayPage() {
         <Lobby
           onJoin={join}
           onJoinSlot={joinSlot}
-          onPlayVsDqn={(u, s) => void handlePlayVsDqn(u, s)}
+          onPlayVsDqn={(u, s, m) => void handlePlayVsDqn(u, s, m)}
           dqnLoading={botPhase === "loading" || botPhase === "connecting"}
         />
       </main>

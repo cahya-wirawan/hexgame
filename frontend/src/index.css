@@ -1094,6 +1094,49 @@ html {
   border-color: #3a5bd9;
 }
 
+.play-dqn-mode-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.play-dqn-mode-chip {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 80px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1.5px solid rgba(60, 80, 200, 0.22);
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.play-dqn-mode-chip input { display: none; }
+
+.play-dqn-mode-chip:hover {
+  border-color: #3a5bd9;
+  background: rgba(235, 240, 255, 0.7);
+}
+
+.play-dqn-mode-chip-active {
+  border-color: #3a5bd9;
+  background: rgba(220, 230, 255, 0.85);
+}
+
+.play-dqn-mode-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a2a6a;
+}
+
+.play-dqn-mode-detail {
+  font-size: 11px;
+  color: #4a5a9a;
+  margin-top: 1px;
+}
+
 .play-rules {
   border: 1px solid rgba(52, 107, 76, 0.15);
   border-radius: 10px;

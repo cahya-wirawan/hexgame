@@ -61,7 +61,7 @@ def create_slot_manager():
 slot_manager = create_slot_manager()
 
 _ip_slot_count: dict[str, int] = defaultdict(int)
-MAX_SLOTS_PER_IP = 2
+MAX_SLOTS_PER_IP = MAX_SLOTS  # one IP may use all slots; total is still capped by MAX_SLOTS
 
 
 def _client_ip(websocket: WebSocket) -> str:

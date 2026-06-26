@@ -72,6 +72,10 @@ websocket_game_manager = WebSocketGameManager(slot_manager, match_repository=mat
 if (OVERVIEW_DIR / "assets").exists():
     app.mount("/overview/assets", StaticFiles(directory=OVERVIEW_DIR / "assets"), name="overview-assets")
 
+MODELS_DIR = BASE_DIR / "static" / "models"
+if MODELS_DIR.exists():
+    app.mount("/models", StaticFiles(directory=MODELS_DIR), name="models")
+
 
 @app.on_event("startup")
 async def startup():

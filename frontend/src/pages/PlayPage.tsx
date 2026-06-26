@@ -1,9 +1,10 @@
-import { Gamepad2, Loader2, RefreshCw, Swords, Trophy } from "lucide-react";
+import { Bot, Gamepad2, Loader2, RefreshCw, Swords, Trophy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../components/ui/button";
 import { HexBoard } from "../components/HexBoard";
 import { useHexGame } from "../hooks/useHexGame";
+import { useDqnBot } from "../hooks/useDqnBot";
 
 type WaitingSlot = {
   slot_id: number;
@@ -42,16 +43,23 @@ function slotOpponentLabel(slot: WaitingSlot): string {
   return "Anonymous";
 }
 
+const DQN_SIZES = [5, 7, 9, 11, 13] as const;
+
 function Lobby({
   onJoin,
   onJoinSlot,
+  onPlayVsDqn,
+  dqnLoading,
 }: {
   onJoin: (username: string, boardSize: number, seriesLength: number) => void;
   onJoinSlot: (username: string, slotId: number) => void;
+  onPlayVsDqn: (username: string, boardSize: number) => void;
+  dqnLoading: boolean;
 }) {
   const [username, setUsername] = useState("");
   const [boardSize, setBoardSize] = useState<number>(7);
   const [seriesLength, setSeriesLength] = useState<number>(1);
+  const [dqnBoardSize, setDqnBoardSize] = useState<number>(7);
   const [waitingSlots, setWaitingSlots] = useState<WaitingSlot[]>([]);
 
   useEffect(() => {
@@ -144,6 +152,37 @@ function Lobby({
           </div>
         )}
 
+        <div className="play-dqn-section">
+          <p className="play-slot-picker-label">
+            <Bot className="h-3.5 w-3.5" />
+            Play vs DQN Bot (local AI)
+          </p>
+          <p className="play-dqn-desc">
+            Runs the model in your browser — no server bot needed. First move may pause briefly while the model loads (~2–7 MB).
+          </p>
+          <div className="play-dqn-row">
+            <div className="play-chips play-chips-compact">
+              {DQN_SIZES.map((s) => (
+                <label key={s} className={`play-chip ${dqnBoardSize === s ? "play-chip-active" : ""}`}>
+                  <input type="radio" name="dqn_board_size" value={s} checked={dqnBoardSize === s} onChange={() => setDqnBoardSize(s)} />
+                  {s}×{s}
+                </label>
+              ))}
+            </div>
+            <Button
+              className="play-dqn-btn"
+              onClick={() => onPlayVsDqn(username.trim() || "anonymous", dqnBoardSize)}
+              disabled={dqnLoading}
+            >
+              {dqnLoading ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
+              ) : (
+                <><Bot className="h-3.5 w-3.5" />Play vs DQN</>
+              )}
+            </Button>
+          </div>
+        </div>
+
         <div className="play-form">
           <p className="play-form-divider-label">
             {waitingSlots.length > 0 ? "Or join matchmaking" : "Join matchmaking"}
@@ -198,7 +237,10 @@ function Lobby({
 
 export function PlayPage() {
   const { state, join, joinSlot, sendMove, reconnect, reset } = useHexGame();
+  const { phase: botPhase, slotId: botSlotId, start: startBot, stop: stopBot } = useDqnBot();
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [isDqnGame, setIsDqnGame] = useState(false);
+  const pendingDqnJoin = useRef<{ username: string } | null>(null);
   const didAutoReconnect = useRef(false);
 
   useEffect(() => {
@@ -217,6 +259,32 @@ export function PlayPage() {
   useEffect(() => {
     if (state.phase !== "waiting") setIsReconnecting(false);
   }, [state.phase]);
+
+  // Once the DQN bot has a slot, have the human join it
+  useEffect(() => {
+    if (!isDqnGame || !botSlotId || !pendingDqnJoin.current) return;
+    const { username } = pendingDqnJoin.current;
+    pendingDqnJoin.current = null;
+    joinSlot(username, botSlotId);
+  }, [isDqnGame, botSlotId, joinSlot]);
+
+  const handlePlayVsDqn = async (username: string, boardSize: number) => {
+    setIsDqnGame(true);
+    pendingDqnJoin.current = { username };
+    try {
+      await startBot(boardSize);
+    } catch {
+      setIsDqnGame(false);
+      pendingDqnJoin.current = null;
+    }
+  };
+
+  const handleReset = () => {
+    reset();
+    stopBot();
+    setIsDqnGame(false);
+    pendingDqnJoin.current = null;
+  };
 
   const { phase, board, boardSize, myPlayer, currentTurn, winner, seriesWinner,
           player1Wins, player2Wins, seriesLength, winsRequired, currentGame,
@@ -250,8 +318,13 @@ export function PlayPage() {
   if (phase === "lobby") {
     return (
       <main className="play-shell">
-        <PlayNav onReset={reset} />
-        <Lobby onJoin={join} onJoinSlot={joinSlot} />
+        <PlayNav onReset={handleReset} />
+        <Lobby
+          onJoin={join}
+          onJoinSlot={joinSlot}
+          onPlayVsDqn={(u, s) => void handlePlayVsDqn(u, s)}
+          dqnLoading={botPhase === "loading" || botPhase === "connecting"}
+        />
       </main>
     );
   }
@@ -259,7 +332,7 @@ export function PlayPage() {
   if (phase === "waiting") {
     return (
       <main className="play-shell">
-        <PlayNav onReset={reset} />
+        <PlayNav onReset={handleReset} />
         <div className="play-waiting">
           <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
           {isReconnecting ? (
@@ -273,7 +346,7 @@ export function PlayPage() {
               <p className="play-waiting-sub">Open another browser tab or run <code>hexgame play</code> to join.</p>
             </>
           )}
-          <Button onClick={reset} className="mt-4">Cancel</Button>
+          <Button onClick={handleReset} className="mt-4">Cancel</Button>
         </div>
       </main>
     );
@@ -283,7 +356,7 @@ export function PlayPage() {
     const sw = seriesWinner!;
     return (
       <main className="play-shell">
-        <PlayNav onReset={reset} />
+        <PlayNav onReset={handleReset} />
         <div className="play-series-over">
           <Trophy className={`h-12 w-12 ${colorOf(sw)}`} />
           <h2 className={colorOf(sw)}>{playerLabel(sw, playerModels, playerUsernames)} wins the series!</h2>
@@ -297,7 +370,7 @@ export function PlayPage() {
               />
             </div>
           )}
-          <Button onClick={reset}>Play again</Button>
+          <Button onClick={handleReset}>Play again</Button>
         </div>
       </main>
     );
@@ -306,10 +379,10 @@ export function PlayPage() {
   if (phase === "error" || !board) {
     return (
       <main className="play-shell">
-        <PlayNav onReset={reset} />
+        <PlayNav onReset={handleReset} />
         <div className="play-error">
           <p>{errorMessage ?? "Connection error"}</p>
-          <Button onClick={reset}><RefreshCw className="h-4 w-4" /> Back to lobby</Button>
+          <Button onClick={handleReset}><RefreshCw className="h-4 w-4" /> Back to lobby</Button>
         </div>
       </main>
     );
@@ -317,7 +390,7 @@ export function PlayPage() {
 
   return (
     <main className="play-shell">
-      <PlayNav onReset={reset} />
+      <PlayNav onReset={handleReset} />
 
       <div className="play-game-layout">
         <aside className="play-sidebar">

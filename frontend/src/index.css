@@ -1054,6 +1054,46 @@ html {
   text-transform: uppercase;
 }
 
+/* DQN bot section */
+.play-dqn-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(60, 80, 200, 0.18);
+  border-radius: 8px;
+  background: rgba(235, 240, 255, 0.45);
+  padding: 14px;
+}
+
+.play-dqn-desc {
+  margin: 0;
+  color: #3a4a7a;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.play-dqn-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.play-chips-compact {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.play-dqn-btn {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  background: #3a5bd9;
+  border-color: #3a5bd9;
+}
+
 .play-rules {
   border: 1px solid rgba(52, 107, 76, 0.15);
   border-radius: 10px;

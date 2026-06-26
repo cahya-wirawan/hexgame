@@ -64,6 +64,16 @@ _ip_slot_count: dict[str, int] = defaultdict(int)
 MAX_SLOTS_PER_IP = 2
 
 
+def _client_ip(websocket: WebSocket) -> str:
+    # Trust X-Forwarded-For so the per-IP limit works correctly behind a
+    # reverse proxy (where websocket.client.host would otherwise be the
+    # proxy's IP for every user).
+    forwarded_for = websocket.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return websocket.client.host if websocket.client else "unknown"
+
+
 def create_match_repository():
     if not DATABASE_URL:
         return None
@@ -209,7 +219,7 @@ async def websocket_matchmake(
         await websocket.close(code=1008)
         return
 
-    client_ip = websocket.client.host if websocket.client else "unknown"
+    client_ip = _client_ip(websocket)
     if _ip_slot_count[client_ip] >= MAX_SLOTS_PER_IP:
         await websocket.accept()
         await websocket.send_json(error("Too many connections from your IP"))

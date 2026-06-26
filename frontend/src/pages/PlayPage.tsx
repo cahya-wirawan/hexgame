@@ -68,6 +68,7 @@ function Lobby({
   onPlayVsAZ,
   dqnLoading,
   azLoading,
+  botError,
 }: {
   onJoin: (username: string, boardSize: number, seriesLength: number, firstPlayer: number) => void;
   onJoinSlot: (username: string, slotId: number) => void;
@@ -75,6 +76,7 @@ function Lobby({
   onPlayVsAZ: (username: string, boardSize: number, seriesLength: number, firstPlayer: number, nSims: number) => void;
   dqnLoading: boolean;
   azLoading: boolean;
+  botError: string | null;
 }) {
   const [username, setUsername] = useState("");
   const [boardSize, setBoardSize] = useState<number>(7);
@@ -388,6 +390,10 @@ function Lobby({
             </div>
           </div>
         )}
+
+        {botError && (
+          <div className="play-bot-error">{botError}</div>
+        )}
       </div>
 
       <div className="play-rules">
@@ -434,10 +440,11 @@ function Lobby({
 
 export function PlayPage() {
   const { state, nextGameCountdown, join, joinSlot, sendMove, reconnect, reset } = useHexGame();
-  const { phase: botPhase, slotId: botSlotId, start: startBot, stop: stopBot } = useDqnBot();
-  const { phase: azPhase, slotId: azSlotId, start: startAZ, stop: stopAZ } = useAlphaZeroBot();
+  const { phase: botPhase, slotId: botSlotId, errorMessage: dqnError, start: startBot, stop: stopBot } = useDqnBot();
+  const { phase: azPhase, slotId: azSlotId, errorMessage: azError, start: startAZ, stop: stopAZ } = useAlphaZeroBot();
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isBotGame, setIsBotGame] = useState(false);
+  const [botStartError, setBotStartError] = useState<string | null>(null);
   const pendingBotJoin = useRef<{ username: string } | null>(null);
   const didAutoReconnect = useRef(false);
 
@@ -475,24 +482,28 @@ export function PlayPage() {
   }, [isBotGame, azSlotId, joinSlot]);
 
   const handlePlayVsDqn = async (username: string, boardSize: number, mode: BotMode, seriesLength: number, firstPlayer: number) => {
+    setBotStartError(null);
     setIsBotGame(true);
     pendingBotJoin.current = { username };
     try {
       await startBot(boardSize, mode, seriesLength, firstPlayer);
-    } catch {
+    } catch (e) {
       setIsBotGame(false);
       pendingBotJoin.current = null;
+      setBotStartError(e instanceof Error ? e.message : "Failed to start bot game");
     }
   };
 
   const handlePlayVsAZ = async (username: string, boardSize: number, seriesLength: number, firstPlayer: number, nSims: number) => {
+    setBotStartError(null);
     setIsBotGame(true);
     pendingBotJoin.current = { username };
     try {
       await startAZ(boardSize, seriesLength, firstPlayer, nSims);
-    } catch {
+    } catch (e) {
       setIsBotGame(false);
       pendingBotJoin.current = null;
+      setBotStartError(e instanceof Error ? e.message : "Failed to start AlphaZero game");
     }
   };
 
@@ -501,6 +512,7 @@ export function PlayPage() {
     stopBot();
     stopAZ();
     setIsBotGame(false);
+    setBotStartError(null);
     pendingBotJoin.current = null;
   };
 
@@ -548,6 +560,7 @@ export function PlayPage() {
           onPlayVsAZ={(u, s, sl, fp, ns) => void handlePlayVsAZ(u, s, sl, fp, ns)}
           dqnLoading={botPhase === "loading" || botPhase === "connecting"}
           azLoading={azPhase === "loading" || azPhase === "connecting"}
+          botError={botStartError ?? dqnError ?? azError ?? null}
         />
       </main>
     );

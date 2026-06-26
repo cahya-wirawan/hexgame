@@ -1468,6 +1468,18 @@ html {
   gap: 7px;
 }
 
+.play-bot-error {
+  border: 1px solid rgba(173, 67, 55, 0.22);
+  border-radius: 7px;
+  background: rgba(255, 245, 242, 0.82);
+  color: #8c2f22;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 4px;
+  word-break: break-word;
+}
+
 .play-inline-error {
   border: 1px solid rgba(173, 67, 55, 0.22);
   border-radius: 7px;
